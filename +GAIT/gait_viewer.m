@@ -124,8 +124,8 @@ function fig = gait_viewer(default_path)
 
         n=round(0.125*data.getFrameRate); 
         body_speed=GAIT.smooth_speed(data.gait.body.x, data.gait.body.y, n);
-        body_speed = body_speed(:); % make sure vertical array;
-        data.gait.body.speed = body_speed.*data.gait.speedFactor;
+        body_speed = body_speed(:).*data.gait.speedFactor; 
+        data.gait.body.speed = body_speed;
 
         for ii = 1:numel(hd.pawList.Items)                
             data.gait.paw(ii).name = hd.pawList.Items{ii};
@@ -135,30 +135,46 @@ function fig = gait_viewer(default_path)
             data.gait.paw(ii).x = x;
             data.gait.paw(ii).y = y;
         
-            speed = GAIT.smooth_speed(x, y, 3).*data.gait.speedFactor;
+            paw_speed = GAIT.smooth_speed(x, y, 3).*data.gait.speedFactor;
             
             % remove paw speed below body thresh
-            speed(body_speed < hd.bodythresh.Value) = NaN;
+            paw_speed(body_speed < hd.bodythresh.Value) = NaN;
 
-            data.gait.paw(ii).speed = speed;
+            data.gait.paw(ii).speed = paw_speed;
         end
     end
+   
+    function plotSpeeds()
+        hold(hd.ax, 'on');
+        data.gait.t = data.dlc.t;
 
-    % function gaitAnalysis(~,~)
-    %     if ~data.has('dlc'), msgbox('Open DLC first!'); return; end
-    % 
-    %     data.gait = GAIT.gait_analysis(data.dlc.table, data.getFrameRate(), ...
-    %         hd.bodythresh.Value, hd.pawthresh.Value);
-    %     data.gait.hd = hd;
-    %     data.gait.t = data.dlc.t;
-    % 
-    %     updateInfo()
-    %     plotSpeeds()
-    %     plotPOIs();
-    % end
+        % body speed
+        hd = shared.myPlot(@plot, hd, 'bodyPlot', hd.ax, ...
+                        data.gait.t, data.gait.body.speed, ...
+                        'k-', 'ButtonDownFcn', @axClicked);
+        % paw speed
+        pawIdx = hd.pawList.Value;
+        hd = shared.myPlot(@plot, hd, 'pawPlot', hd.ax, ...
+                        data.gait.t, data.gait.paw(pawIdx).speed, ...
+                        'b-', 'ButtonDownFcn', @axClicked);
 
-    function gaitAnalysis(~,~)
+        % threshold lines
+        hd = shared.myPlot(@yline, hd, 'bodyThresLine', hd.ax, ...
+                        [], hd.bodythresh.Value, ...
+                        'k:', 'HitTest', 'off');
+        hd = shared.myPlot(@yline, hd, 'pawThresLine', hd.ax, ...
+                        [], hd.pawthresh.Value, ...
+                        'b:', 'HitTest', 'off');
 
+        % time line
+        hd = shared.myPlot(@xline, hd, 'timeline', hd.ax, ...
+                        data.currentTime, [], ...
+                        'k-', 'HitTest', 'off');
+
+        data.gait.hd = hd;
+    end
+
+    function getPOIs()
         body_speed = data.gait.body.speed;
         bodythres = hd.bodythresh.Value;
         pawthres = hd.pawthresh.Value;
@@ -235,62 +251,6 @@ function fig = gait_viewer(default_path)
         hd.sta.Enable = 'on';
         hd.poiList.Enable = 'on';
         hd.poiList.Items = {'pawUp','pawDown','peak','valley'};
-
-        plotSpeeds()
-        plotPOIs();
-    end
-
-    function updateInfo()
-        getSpeeds()
-        plotSpeeds()
-        % gaitAnalysis()
-        % plotPOIs()
-    end
-    
-    function plotSpeeds()
-        hold(hd.ax, 'on');
-        data.gait.t = data.dlc.t;
-
-        % body speed
-        hd = shared.myPlot(@plot, hd, 'bodyPlot', hd.ax, ...
-                        data.gait.t, data.gait.body.speed, ...
-                        'k-', 'ButtonDownFcn', @axClicked);
-        % paw speed
-        pawIdx = hd.pawList.Value;
-        hd = shared.myPlot(@plot, hd, 'pawPlot', hd.ax, ...
-                        data.gait.t, data.gait.paw(pawIdx).speed, ...
-                        'b-', 'ButtonDownFcn', @axClicked);
-
-        % threshold lines
-        hd = shared.myPlot(@yline, hd, 'bodyThresLine', hd.ax, ...
-                        [], hd.bodythresh.Value, ...
-                        'k:', 'HitTest', 'off');
-        hd = shared.myPlot(@yline, hd, 'pawThresLine', hd.ax, ...
-                        [], hd.pawthresh.Value, ...
-                        'b:', 'HitTest', 'off');
-
-        % time line
-        hd = shared.myPlot(@xline, hd, 'timeline', hd.ax, ...
-                        data.currentTime, [], ...
-                        'k-', 'HitTest', 'off');
-
-        % hold(hd.ax, 'off');
-        % % body speed
-        % plot(hd.ax, data.gait.t, data.gait.body.speed, 'k:');
-        % hold(hd.ax, 'on');
-        % % threshold lines
-        % yline(hd.ax, data.gait.bodythres, 'k:');
-        % yline(hd.ax, data.gait.pawthres, 'b--');
-        % 
-        % % paw speeds
-        % pawIdx = hd.pawList.Value;
-        % hd.pawPlot = plot(hd.ax, data.gait.t, data.gait.paw(pawIdx).speed, 'b-', ...
-        %     'ButtonDownFcn', @axClicked);
-        % 
-        % % timeline
-        % hd.timeline = xline(hd.ax, data.currentTime, 'k', 'HitTest','off');
-
-        data.gait.hd = hd;
     end
 
     function plotPOIs()
@@ -309,8 +269,6 @@ function fig = gait_viewer(default_path)
                             linespec);
     
             if data.has('emg')
-                % datatype = data.emg.hd.datatype.Value;
-                % emgTidx = shared.find_index(data.emg.(datatype).t, poiT);
                 hd = shared.myPlot(@scatter, hd, 'poiEMG', data.emg.hd.ax, ...
                                 poiT, zeros(size(poiT)), linespec);
             end
@@ -333,13 +291,31 @@ function fig = gait_viewer(default_path)
         end
     end
 
+    function updateInfo()
+        getSpeeds()
+        plotSpeeds()
+        % gaitAnalysis()
+        % plotPOIs()
+    end
+
+    function gaitAnalysis(~,~)
+        getPOIs();
+        plotPOIs();
+    end
+
     function plotSTA(~,~)
-        channels = data.emg.hd.chanList.Value;
-        if strcmp(data.emg.hd.datatype.Value, "Raw")
-            emg = data.emg.analog_data(:,channels);
+        if ~data.has('emg')
+            uialert(fig, 'Requires EMG', 'Error');
+            return;
+        end
+
+        channel = data.emg.hd.chanList.Value;
+        emgType = data.emg.hd.datatype.Value;
+        if strcmp(emgType, "Raw")
+            emg = data.emg.analog_data(:,channel);
             emgT = data.emg.t;
         else
-            emg = data.emg.processed.data(:,channels);
+            emg = data.emg.processed.data(:,channel);
             emgT = data.emg.processed.t;
         end
         
@@ -348,7 +324,19 @@ function fig = gait_viewer(default_path)
         poiIdx = data.gait.paw(pawIdx).(poiName);
         poiT = data.gait.t(poiIdx);
         
-        GAIT.sta(emg, emgT, poiT, 'plot');
+        [ydata, xdata, info] = GAIT.sta(emg, emgT, poiT, 'plot');
+
+        sta = info;
+        sta.ydata = ydata;
+        sta.xdata = xdata;
+        sta.emgType = emgType;
+        sta.emgChan = channel;
+        sta.emgChanName = data.emg.hd.chanList.Items{channel};
+        sta.pawName = data.gait.paw(pawIdx).name;
+        sta.poiName = poiName;
+
+        data.gait.sta = sta;
+        assignin('base', 'sta', sta);
     end
 
     function pawChanged(~,~)

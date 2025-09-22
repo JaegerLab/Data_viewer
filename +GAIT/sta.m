@@ -76,11 +76,10 @@ elseif random_method == 2
     random_std = std(emg(random_range));
 elseif random_method ==3
     % === randomly shift real event time =======
-    rep = 20;
+    rep = 40;
     random_sta = zeros(2*max_lag*sample_rate+1, rep);
-    disp('randomized control repitition:')
+    % disp('randomized control repitition:')
     for kk=1:rep
-        disp(kk)
         % add random shift
         random_index=event_index + round(0.3*sample_rate.*(rand(size(event_index))-0.5));
         random_index(random_index>traceLength | random_index<=0)=[];
@@ -91,12 +90,11 @@ elseif random_method ==3
     random_sta_t = random_sta_x(:)./sample_rate;
     random_mean = mean(random_sta, 2);
     random_std = std(random_sta, 0, 2);
-    % if false
-    %     smooth_range = round(max_lag*sample_rate*2/50);
-    %     CI_avg = shared.fastsmooth(CI_avg, smooth_range);
-    %     CI_std = shared.fastsmooth(CI_std, smooth_range);
-    % end
+
 end
+info.random_sta_t = random_sta_t;
+info.random_mean = random_mean;
+info.random_std = random_std;
 
 if exist('plotit','var')
     if isequal(plotit, 'plot')
@@ -112,7 +110,7 @@ if exist('plotit','var')
     hold on;
     % random control
     if random_method == 3
-        line1 = plot(random_sta_t, CI_avg, 'k--');
+        line1 = plot(random_sta_t, random_mean, 'k--');
         fill1 = fill([random_sta_t; flipud(random_sta_t)], ...
             [random_mean; flipud(random_mean)]+k.*[random_std; -flipud(random_std)], ...
             'k', 'EdgeColor', 'none', 'FaceAlpha', 0.15);
@@ -129,17 +127,17 @@ if exist('plotit','var')
     xline(0,':k','HandleVisibility', 'off');
 
 	% peak texts
-    [max_sta,index_max_sta] = max(sta-CI_avg);
-	text(x(index_max_sta), max_sta+CI_avg(index_max_sta), num2str(x(index_max_sta)), ...
+    [max_sta,index_max_sta] = max(sta-random_mean);
+	text(x(index_max_sta), max_sta+random_mean(index_max_sta), num2str(x(index_max_sta)), ...
         'VerticalAlignment','bottom','HorizontalAlignment','center')
-    [min_sta,index_min_sta] = min(sta-CI_avg);
-    text(x(index_min_sta), min_sta+CI_avg(index_min_sta), num2str(x(index_min_sta)), ...
+    [min_sta,index_min_sta] = min(sta-random_mean);
+    text(x(index_min_sta), min_sta+random_mean(index_min_sta), num2str(x(index_min_sta)), ...
         'VerticalAlignment','top','HorizontalAlignment','center')
 
     % figure title and axis labels
     xlabel('t (s)');
     percentage = {'68.3%','95.5%','99.7%'};
-    legend({'STA', 'random mean', [num2str(k) '*STD CI:' percentage{k}]})
+    legend({ [num2str(k) '*STD CI:' percentage{k}], 'random mean', 'STA'})
 
     % title([inputname(1) ', ' inputname(3)], 'Interpreter','none')
 
