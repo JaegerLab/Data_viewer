@@ -88,7 +88,7 @@ function fig = gait_viewer(default_path)
         end
 
         % get bodypart list
-        list = data.dlc.table.Properties.UserData;
+        list = data.dlc.hd.list_bodyparts.Items;
         
         % body and paw selection
         [bodyIdx, tf] = listdlg('PromptString','Select body:','ListString',list);
