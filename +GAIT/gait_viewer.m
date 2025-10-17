@@ -37,7 +37,6 @@ function fig = gait_viewer(default_path)
             'ValueDisplayFormat','Paw thresh: %d cm/s', ...
             'ValueChangedFcn', @pawThreshChanged);
         uibutton(subgrid1, 'Text', 'Gait Analysis', 'ButtonPushedFcn', @gaitAnalysis);
-        % uibutton(subgrid1,'Text','STA');
         uilabel(subgrid1,'Text','Body:','HorizontalAlignment','Right');
 
         hd.body = uidropdown(grid1, 'ValueChangedFcn', @bodyChanged, ...
@@ -334,6 +333,9 @@ function fig = gait_viewer(default_path)
         sta.emgChanName = data.emg.hd.chanList.Items{channel};
         sta.pawName = data.gait.paw(pawIdx).name;
         sta.poiName = poiName;
+
+        title(sta.ax, [sta.pawName ', ' poiName ', ' sta.emgChanName], ...
+            "Interpreter","none");
 
         data.gait.sta = sta;
         assignin('base', 'sta', sta);

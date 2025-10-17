@@ -142,4 +142,7 @@ if exist('plotit','var')
     % title([inputname(1) ', ' inputname(3)], 'Interpreter','none')
 
 	hold off;
+
+    info.fig = fig;
+    info.axis = ax;
 end
