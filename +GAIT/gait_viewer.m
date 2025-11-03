@@ -334,7 +334,7 @@ function fig = gait_viewer(default_path)
         sta.pawName = data.gait.paw(pawIdx).name;
         sta.poiName = poiName;
 
-        title(sta.ax, [sta.pawName ', ' poiName ', ' sta.emgChanName], ...
+        title(sta.axis, [sta.pawName ', ' poiName ', ' sta.emgChanName], ...
             "Interpreter","none");
 
         data.gait.sta = sta;
@@ -450,5 +450,6 @@ function fig = gait_viewer(default_path)
     
         delete(src);  % finally close the GUI
     end
+
 
 end 
