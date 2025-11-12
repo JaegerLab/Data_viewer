@@ -173,7 +173,8 @@ function fig = dlc_viewer(default_path)
                 hd.marker.YData = hd.yplot.YData(frame);            
             else
                 hd.marker = plot(data.video.hd.ax, ...
-                    hd.xplot.YData(frame), hd.yplot.YData(frame), 'g+');
+                    hd.xplot.YData(frame), hd.yplot.YData(frame), ...
+                    'g+', 'LineWidth', 2);
                 data.dlc.hd = hd;
             end
         end
