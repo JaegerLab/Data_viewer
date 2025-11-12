@@ -262,26 +262,26 @@ function fig = gait_viewer(default_path)
             poiX = data.gait.paw(pawIdx).x(poiIdx);
             poiY = data.gait.paw(pawIdx).y(poiIdx);
                 
-            linespec = 'ro';
+            linespec = {'mo', 'LineWidth', 2};
             hd = shared.myPlot(@scatter, hd, 'poiGait', hd.ax, ...
                             poiT, hd.pawPlot.YData(poiIdx), ...
-                            linespec);
+                            linespec{:});
     
             if data.has('emg')
                 hd = shared.myPlot(@scatter, hd, 'poiEMG', data.emg.hd.ax, ...
-                                poiT, zeros(size(poiT)), linespec);
+                                poiT, zeros(size(poiT)), linespec{:});
             end
     
             if data.has('dlc')
                 hd = shared.myPlot(@scatter, hd, 'poiXDLC', data.dlc.hd.ax, ...
-                                poiT, poiX, linespec);
+                                poiT, poiX, linespec{:});
                 hd = shared.myPlot(@scatter, hd, 'poiYDLC', data.dlc.hd.ax, ...
-                                poiT, poiY, linespec);
+                                poiT, poiY, linespec{:});
             end
     
             if data.has('video') 
                 hd = shared.myPlot(@scatter, hd, 'poiVideo', data.video.hd.ax, ...
-                                poiX, poiY, linespec);
+                                poiX, poiY, linespec{:});
                 timeWindow = 1;
                 alpha(hd.poiVideo, 2./(1 + exp(abs(poiT-data.currentTime)/timeWindow)));
             end
@@ -330,7 +330,8 @@ function fig = gait_viewer(default_path)
         sta.xdata = xdata;
         sta.emgType = emgType;
         sta.emgChan = channel;
-        sta.emgChanName = data.emg.hd.chanList.Items{channel};
+        idx = data.emg.hd.chanList.ItemsData == channel;
+        sta.emgChanName = data.emg.hd.chanList.Items{idx};
         sta.pawName = data.gait.paw(pawIdx).name;
         sta.poiName = poiName;
 
@@ -450,6 +451,5 @@ function fig = gait_viewer(default_path)
     
         delete(src);  % finally close the GUI
     end
-
 
 end 
