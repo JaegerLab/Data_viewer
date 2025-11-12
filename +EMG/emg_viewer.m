@@ -44,7 +44,7 @@ function fig = emg_viewer(default_path)
         xlabel(hd.ax, 'Time (s)'); ylabel(hd.ax, 'Voltage');
         disableDefaultInteractivity(hd.ax)
     
-        hd.chanList = uilistbox(grid1, 'Multiselect', 'on', ...
+        hd.chanList = uilistbox(grid1, 'Multiselect', 'off', ...
             'ValueChangedFcn', @(src,evt)updatePlots());
         hd.chanList.Layout.Row = 3; hd.chanList.Layout.Column = 2;
 
