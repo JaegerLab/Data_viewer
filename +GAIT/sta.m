@@ -2,17 +2,22 @@ function [sta, x, info] = sta(emg, emg_t, event_time, varargin)
 
 % GAIT.sta: Spike-triggered Averaging
 % 
-%  [sta, x] = GAIT.sta(emg, emg_t, event_time, max_lag, plotit)
+%  [sta, x, info] = GAIT.sta(emg, emg_t, event_time, max_lag, plotit)
 % 
 %  emg: EMG.
 %  emg_t: the t axis of EMG, unit in Second
 %  event_time  : An array of each event time. in Seconds.
-%  max_lag     : the result range is [-max_lag, max_lag] 
-%                and the length is 2*max_lag+1. unit in S.
+%  max_lag     : A number, the result range is [-max_lag, max_lag] 
+%                unit in S.
 %  plotit      : 'plot' to plot the mean averaged over traces.
 %                or specify an axes object to plot in.
-%  gait        : provide gait structure to 
+%  sta : y axis of the average.
 %  x   : x axis for the average.
+%  info: a structure including these fields
+%        info.random_sta_t : x axis of randomized sta
+%        info.random_mean  : center of CI
+%        info.random_std   : std of CI
+%        info.k            : used in mean +- k*std.
 
 % assign the arguments========================
 narginchk(3,6)
@@ -76,7 +81,7 @@ elseif random_method == 2
     random_std = std(emg(random_range));
 elseif random_method ==3
     % === randomly shift real event time =======
-    rep = 40;
+    rep = 100;
     random_sta = zeros(2*max_lag*sample_rate+1, rep);
     % disp('randomized control repitition:')
     for kk=1:rep
