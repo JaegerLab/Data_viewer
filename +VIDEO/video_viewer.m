@@ -76,9 +76,6 @@ function fig = video_viewer(default_path)
         ax = uiaxes(gl);
         ax.Layout.Row = 4; ax.Layout.Column = [1 2];
         ax.XTick = []; ax.YTick = [];
-        % ax.XAxis.Visible = 'off'; ax.YAxis.Visible = 'off';
-        % box(ax,"off");
-        % ax.Toolbar.Visible = 'off';
     
         % Timer for playback
         hd.timer = timer('ExecutionMode', 'fixedRate', ...
@@ -112,8 +109,8 @@ function fig = video_viewer(default_path)
 
         % initialize video image
         hold(hd.ax, 'off')
-        hd.image = imshow(readFrame(data.video.vid), ...
-            'Parent',hd.ax);
+        hd.image = imshow(readFrame(data.video.vid), 'Parent',hd.ax);
+        set(hd.image, 'ButtonDownFcn',@manualFixCoord)
         hold(hd.ax, 'on')
         data.video.hd.image = hd.image;
         drawnow
@@ -224,16 +221,21 @@ function fig = video_viewer(default_path)
             stop(hd.timer);
         end
     end
-    % 
-    % function advanceFrame(~,~)
-    %     if frameIdx >= totalFrames
-    %         stop(hd.timer);
-    %         hPlay.Text = 'Play';
-    %         return;
-    %     end
-    %     frameIdx = frameIdx + 1;
-    %     updateFrame();
-    % end
+
+    function manualFixCoord(~,evt)
+        % Can only fix temp xy lines
+        if ismember('temp_x', data.dlc.table.Properties.VariableNames)
+            % get mouse click coordinates
+            coords = evt.IntersectionPoint(1:2);
+    
+            % update temp data
+            data.dlc.table{frameIdx, 'temp_x'} =coords(1);
+            data.dlc.table{frameIdx, 'temp_y'} =coords(2);
+        
+            % trigger data changed event
+            notify(data,'DataChanged')
+        end
+    end
 
     function onClose(~,~)
 
