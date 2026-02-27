@@ -1,7 +1,7 @@
 function tabledlc = read_dlc(filename)
+% tabledlc = read_dlc(filename)
 % wrapper function to read different data formats
 % calls other functions
-
 
 % the data format of tabledlc
 % a matlab table, 
@@ -40,13 +40,17 @@ function tabledlc = read_dlc(filename)
 switch ext
     % ########## to do: handle different type of data formats ###
     case '.csv'
-        % Li Su's data format
-        tabledlc = DLC.read_csv(filename);
+        if contains(filename, '.analysis')
+            % csv by SLEAP
+            tabledlc = DLC.read_slp(filename);
+        else
+            % csv by DeepLabCut
+            tabledlc = DLC.read_csv(filename);
+        end
     case '.h5'
         % Indy's data format
         tabledlc = DLC.read_h5(filename);
     case '.mat'
-        % Aureli's data format
         tabledlc = DLC.read_mat(filename); 
     % === todo: add your own case and reader function here =====
     % case '.ext'

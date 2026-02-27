@@ -38,11 +38,11 @@ function fig = dlc_viewer(default_path)
             hd.currentFrame = uieditfield(subgrid1,'numeric','Value',1, ...
                 'ValueDisplayFormat','Frame: %d');
             
-        uibutton(grid1,'Text','Fix', 'ButtonPushedFcn',@openFix);
         % subgrid3 = uigridlayout(grid1, [1 2], 'Padding', [0 0 0 0]);
         % subgrid3.Layout.Row = 2; subgrid3.Layout.Column = 2;
-        %     uibutton(subgrid3,'Text','↙⁀');
-        %     uibutton(subgrid3,'Text','⁀↘');
+        uibutton(grid1,'Text','Auto Fix', 'ButtonPushedFcn',@openFix);
+            % hd.manualFix = uicheckbox(subgrid3,'Text','Man. Fix','Value', 0, ...
+            %     'ValueChangedFcn',@manualFix);
         
     
         %% Row 3: DLC plot
@@ -167,16 +167,30 @@ function fig = dlc_viewer(default_path)
     % if there's video, draw the marker on the video
     function updateVideoMarker(frame)
         if data.has('video') 
-            % always need to check if plot handle is still valid.
-            if isfield(hd, 'marker') && ishghandle(hd.marker)
-                hd.marker.XData = hd.xplot.YData(frame);
-                hd.marker.YData = hd.yplot.YData(frame);            
-            else
-                hd.marker = plot(data.video.hd.ax, ...
-                    hd.xplot.YData(frame), hd.yplot.YData(frame), ...
-                    'g+', 'LineWidth', 2);
-                data.dlc.hd = hd;
+            % show temp marker
+            if ismember('temp_x', data.dlc.table.Properties.VariableNames)
+                hd = shared.myPlot( ...
+                    @plot, hd, 'tempMarker', data.video.hd.ax, ...
+                    hd.tempXplot.YData(frame), hd.tempYplot.YData(frame), ...
+                    'y+', 'LineWidth', 2, 'HitTest','off');
             end
+
+            % show marker
+            hd = shared.myPlot(@plot, hd, 'marker', data.video.hd.ax, ...
+                    hd.xplot.YData(frame), hd.yplot.YData(frame), ...
+                    'g+', 'LineWidth', 2, 'HitTest','off');
+            data.dlc.hd = hd;
+
+            % % always need to check if plot handle is still valid.
+            % if isfield(hd, 'marker') && ishghandle(hd.marker)
+            %     hd.marker.XData = hd.xplot.YData(frame);
+            %     hd.marker.YData = hd.yplot.YData(frame);            
+            % else
+            %     hd.marker = plot(data.video.hd.ax, ...
+            %         hd.xplot.YData(frame), hd.yplot.YData(frame), ...
+            %         'g+', 'LineWidth', 2, 'HitTest','off');
+            %     data.dlc.hd = hd;
+            % end
         end
     end
 
@@ -220,12 +234,30 @@ function fig = dlc_viewer(default_path)
         mousePos = get(0, 'PointerLocation');
         
         if ~isfield(hd, 'fixGUI') || ~isgraphics(hd.fixGUI, 'figure')
+            % open a new window
             hd.fixGUI = DLC.DLC_fix_GUI(mousePos);
         else
-            % if window is already open, don't open another one.
+            % if window is already open, activate it.
             figure(hd.fixGUI)
         end
     end
+
+    % function manualFix(src, evt)
+    %     if evt.Value
+    %         % opt.WindowStyle = 'modal';
+    %         % new_name = hd.list_bodyparts.Value;
+    %         % new_name = inputdlg('Save fixed trace as:', 'Save Trace', [1 30], {new_name}, opt);
+    %         % 
+    %         % if ~isempty(new_name)
+    %         %     if ismember(new_name, hd.list_bodyparts.Items)
+    %         %         uialert(fig, 'Overwrite?', 'Warning');
+    %         %     else
+    %         %         assignin('base', new_name{1}, data);
+    %         % 
+    %         %     end
+    %         % end
+    %     end
+    % end
 
     % === sync time and zoom ===========
     function axClicked(~,evt)

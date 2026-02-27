@@ -82,7 +82,7 @@ function fig = DLC_fix_GUI(mousePos)
         overwrite = false;
         if ismember([newName '_x'], data.dlc.table.Properties.VariableNames)
             selection = questdlg('Variable exists. Overwrite?','Warning', 'Yes','No','No');
-            if ~strcmp(selection,'Yes'), return; end
+            if ~strcmp(selection,'Yes'), return; end % if no, abort
             data.dlc.table = removevars(data.dlc.table, ...
                 {[newName '_x'],[newName '_y'],[newName '_likelihood']});
             % flag overwritten so the name won't be added repeatedly
@@ -93,6 +93,14 @@ function fig = DLC_fix_GUI(mousePos)
         data.dlc.table = renamevars(data.dlc.table, ...
             {'temp_x', 'temp_y', 'temp_likelihood'}, ...
             {[newName '_x'],[newName '_y'],[newName '_likelihood']});
+
+        % remove temp marker
+        if isfield(data.dlc.hd, 'tempMarker')
+            if ishghandle(data.dlc.hd.tempMarker)
+                delete(data.dlc.hd.tempMarker)
+            end
+            data.dlc.hd = rmfield(data.dlc.hd, 'tempMarker');
+        end
 
         % update list and plot
         if ~overwrite
@@ -106,6 +114,12 @@ function fig = DLC_fix_GUI(mousePos)
         if data.has('dlc')
             if ismember('temp_x', data.dlc.table.Properties.VariableNames)
                 data.dlc.table = removevars(data.dlc.table, {'temp_x', 'temp_y', 'temp_likelihood'});
+            end
+            if isfield(data.dlc.hd, 'tempMarker')
+                if ishghandle(data.dlc.hd.tempMarker)
+                    delete(data.dlc.hd.tempMarker)
+                end
+                data.dlc.hd = rmfield(data.dlc.hd, 'tempMarker');
             end
         end
         notify(data, 'DataChanged');
