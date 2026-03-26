@@ -34,7 +34,7 @@ function fig = emg_viewer(default_path)
             uibutton(subgrid1, 'Text', 'Pre-Process', 'ButtonPushedFcn', @preprocess);
             hd.datatype = uidropdown(subgrid1, "Items", "Raw", "ValueChangedFcn", @typeChanged);
 
-        uibutton(grid1, 'Text', 'Load Channel Map', 'ButtonPushedFcn', @(src,evt)loadChannelMap(true)); %true = sort muscles
+        uibutton(grid1, 'Text', 'Load Channel Map', 'ButtonPushedFcn', @(src,evt)loadChannelMap()); 
     
         %% Row 3: Listbox + Axes
         hd.ax = uiaxes(grid1);
@@ -44,9 +44,17 @@ function fig = emg_viewer(default_path)
         xlabel(hd.ax, 'Time (s)'); ylabel(hd.ax, 'Voltage');
         disableDefaultInteractivity(hd.ax)
     
-        hd.chanList = uilistbox(grid1, 'Multiselect', 'off', ...
-            'ValueChangedFcn', @(src,evt)updatePlots());
-        hd.chanList.Layout.Row = 3; hd.chanList.Layout.Column = 2;
+        subgrid3 = uigridlayout(grid1, [2 1], Padding=[0 0 0 0], ...
+            RowHeight={'1x', 30});
+        subgrid3.Layout.Row = 3; subgrid3.Layout.Column = 2;
+            hd.chanList = uilistbox(subgrid3, 'Multiselect', 'off', ...
+                'ValueChangedFcn', @(src,evt)updatePlots());
+            subgrid4 = uigridlayout(subgrid3, [1 2], Padding = [0 0 0 0], ...
+                        ColumnWidth ={50, '1x'});
+            uilabel(subgrid4, 'Text', 'Sort by:');
+            hd.sortby = uidropdown(subgrid4, 'Enable', 'off', ...
+                "Items",["Channel", "Muscle"], 'ValueChangedFcn', @(src,evt)sortChannelMap());
+        
 
         %% Row 4: zoom in, zoom out, update buttons
         subgrid2 = uigridlayout(grid1, [1 3], 'Padding', [0 0 0 0]);
@@ -96,6 +104,8 @@ function fig = emg_viewer(default_path)
             data.emg.trigger.data = emgData.dig_in_data;
         end
         data.emg.t = emgData.t;
+
+        hd.datatype.Items = "Raw";
 
         updateInfo();
         updatePlots();
@@ -189,7 +199,7 @@ function fig = emg_viewer(default_path)
         data.emg.hd = hd;
     end
 
-    function loadChannelMap(sort_mapping)
+    function loadChannelMap()
         % get default fileter
         default_file = hd.path.Value;
         if isempty(default_file)
@@ -209,32 +219,46 @@ function fig = emg_viewer(default_path)
         % check if channel number is correct.
         if height(ch_mapping) == size(data.emg.analog_data, 2)
             % mono-pole recording
+            ch_mapping.Electrode = cellstr(num2str(ch_mapping.Channel, '%02d'));
         elseif height(ch_mapping) == 2*size(data.emg.analog_data, 2)
             % differential recording
+            ch_mapping.Electrode = cellstr(num2str(ch_mapping.Channel, '%02d'));
+            % combine 2 electrode names
+            ch_mapping.Electrode(1:2:end,:) = ...
+                strcat(ch_mapping.Electrode(1:2:end,:), ...
+                  '-', ch_mapping.Electrode(2:2:end,:)); 
             ch_mapping = ch_mapping(1:2:end, :);
         else
             error('Channel number mismatch');
         end
+        % channel names
+        ch_mapping.Names = join([data.emg.analog_channels',  ...
+                          ch_mapping.Electrode, ...
+                          ch_mapping.Muscle,  ...
+                          ch_mapping.Note], ', ');
+        data.emg.ch_mapping = ch_mapping;
 
-        % connect columns in the table
-        ch_names = strcat(num2str(ch_mapping.Channel), '_', ...
-                                   ch_mapping.Muscle, '_', ...
-                                   ch_mapping.Note);
-        if sort_mapping
-            [~, orders] = sort(ch_mapping.Muscle);
-        else
-            orders = 1:height(ch_mapping);
+        hd.chanList.Items = ch_mapping.Names;
+        hd.sortby.Enable = 'on';
+        data.emg.hd = hd;
+        sortChannelMap
+    end
+
+    function sortChannelMap()
+        switch hd.sortby.Value
+            case "Muscle"
+                [~, orders] = sort(data.emg.ch_mapping.Muscle);
+            case "Channel"
+                [~, orders] = sort(data.emg.chan_names);
         end
 
         % save name in the list
-        hd.chanList.Items = ch_names(orders);
+        hd.chanList.Items = data.emg.ch_mapping.Names(orders);
         hd.chanList.ItemsData = orders;
     end
 
     %% pre-process data
     function preprocess(~,~)
-        % force single channel
-        hd.chanList.Value = hd.chanList.Value(1);
         
         % draw new window where the mouse is
         mousePos = get(0, 'PointerLocation');
