@@ -4,6 +4,11 @@ function data=read_intan(files)
 % wrapper function to read_Intan_RHD2000
 % Read multiple files and conbine data.
 
+if nargin==0
+    [files, path] = uigetfile('*.*', 'Select EMG File(s)', 'MultiSelect', 'on');
+    if isequal(files, 0), return; end
+    files = fullfile(path, files);
+end
 
 if ischar(files), files = {files}; end  % ensure cell
 if isstruct(files)
@@ -12,17 +17,23 @@ end
 file_num = length(files);
 
 p = 0; % pointer for the end of data in pre-allocated space.
+hd = waitbar(0, 'Please wait...', 'Name', 'Reading files');
+ht = findall(hd,'Type','text');
+set(ht,'Interpreter','none');
 for ii=1:file_num
     tic
-    filename = files{ii};
-    disp(filename)
-    if ~exist(filename,"file"), error('File not found'); end
+    fullname = files{ii};
+
+    % disp(filename)
+    [~, filename, ext] = fileparts(fullname);
+    waitbar(ii/file_num, hd, sprintf('Reading: %s%s (%d/%d)', filename,ext, ii, file_num));
+
+    if ~exist(fullname,"file"), error('File not found'); end
     
-    [~,~,ext] = fileparts(filename);
     if isequal(ext,'.rhd')
-        data1= EMG.read_Intan_RHD2000(filename,1);
+        data1= EMG.read_Intan_RHD2000(fullname,1);
     elseif isequal(ext,'.rhs')
-        data1= EMG.read_Intan_RHS2000(filename,1);
+        data1= EMG.read_Intan_RHS2000(fullname,1);
     else
         error('Unrecognized file type.')
     end
@@ -80,5 +91,5 @@ for ii=1:file_num
             data.dig_in_data(p+1:all_len, :) = [];
         end
     end
-    
 end
+close(hd)
