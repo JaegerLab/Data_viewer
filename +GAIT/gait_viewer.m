@@ -24,7 +24,7 @@ function fig = gait_viewer(default_path)
         %% Row 2: DLC processing
         subgrid1 = uigridlayout(grid1, [1 7], 'Padding', [0 0 0 0], ...
             'Layout', matlab.ui.layout.GridLayoutOptions('Row', 2, 'Column', 1));
-        subgrid1.ColumnWidth = {'1x', 120,120,120,100,50};
+        subgrid1.ColumnWidth = {'1x', 130,120,120,120,100};
         hd.frameRate = uieditfield(subgrid1,'numeric','Value',1, ...
             'ValueDisplayFormat','Frame rate: %.2f Hz');
         hd.lengthFactor = uieditfield(subgrid1,'numeric','Value',30, ...
@@ -36,8 +36,10 @@ function fig = gait_viewer(default_path)
         hd.pawthresh = uieditfield(subgrid1,'numeric','Value',10, ...
             'ValueDisplayFormat','Paw thresh: %d cm/s', ...
             'ValueChangedFcn', @pawThreshChanged);
+        hd.bodysmooth = uieditfield(subgrid1,'numeric','Value',1, ...
+            'ValueDisplayFormat','Body smooth: %d s', ...
+            'ValueChangedFcn', @pawThreshChanged);
         uibutton(subgrid1, 'Text', 'Gait Analysis', 'ButtonPushedFcn', @gaitAnalysis);
-        uilabel(subgrid1,'Text','Body:','HorizontalAlignment','Right');
 
         hd.body = uidropdown(grid1, 'ValueChangedFcn', @bodyChanged, ...
             'Enable','off');
@@ -87,17 +89,18 @@ function fig = gait_viewer(default_path)
         end
 
         % get bodypart list
-        list = data.dlc.hd.list_bodyparts.Items;
+        part_list = data.dlc.hd.list_bodyparts.Items;
         
         % body and paw selection
-        [bodyIdx, tf] = listdlg('PromptString','Select body:','ListString',list);
+        [bodyIdx, tf] = listdlg('PromptString','Select body:','ListString',part_list);
         if ~tf, return; end
-        [pawIdx, tf] = listdlg('PromptString','Select paws:','ListString',list);
+        [pawIdx, tf] = listdlg('PromptString','Select paws:','ListString',part_list);
         if ~tf, return; end
 
         % add selected body parts into GUI lists
-        hd.body.Items = list(bodyIdx); hd.body.Enable = 'on';
-        hd.pawList.Items = list(pawIdx); hd.pawList.Enable = 'on';
+        hd.body.Items = part_list(bodyIdx); hd.body.Enable = 'on';
+
+        hd.pawList.Items = part_list(pawIdx); hd.pawList.Enable = 'on';
         hd.pawList.ItemsData = 1:numel(pawIdx);
 
         getSpeeds();
@@ -121,7 +124,7 @@ function fig = gait_viewer(default_path)
         data.gait.body.x = data.dlc.table.([hd.body.Value, '_x']);
         data.gait.body.y = data.dlc.table.([hd.body.Value, '_y']);
 
-        n=round(0.125*data.getFrameRate); 
+        n=round(hd.bodysmooth.Value*data.getFrameRate); 
         body_speed=GAIT.smooth_speed(data.gait.body.x, data.gait.body.y, n);
         body_speed = body_speed(:).*data.gait.speedFactor; 
         data.gait.body.speed = body_speed;
@@ -149,8 +152,9 @@ function fig = gait_viewer(default_path)
 
         % body speed
         hd = shared.myPlot(@plot, hd, 'bodyPlot', hd.ax, ...
-                        data.gait.t, data.gait.body.speed, ...
-                        'k-', 'ButtonDownFcn', @axClicked);
+                    data.gait.t, data.gait.body.speed, ...
+                    'k-', 'ButtonDownFcn', @axClicked);
+
         % paw speed
         pawIdx = hd.pawList.Value;
         hd = shared.myPlot(@plot, hd, 'pawPlot', hd.ax, ...
