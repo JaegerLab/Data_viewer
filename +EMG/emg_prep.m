@@ -20,19 +20,18 @@ function [new_data, new_t] = emg_prep(data, t, options)
 %%
 fs = 1/mean(diff(t));
 new_data = data;
-progbar = uiprogressdlg(fig,'Title','Processing', ...
-    'Message','Filtering', ...
-    'Indeterminate','on');
+
+hd = waitbar(0,'Processing ...', 'Name', 'Processing');
 drawnow
 
 if isfield(options, 'HighPassFreq')
-    fcut = options.HighPassFreq;
-    parameters.filter = designfilt('highpassiir', 'FilterOrder', 4, ...
-                   'HalfPowerFrequency', fcut, 'SampleRate', fs);
-    if isfield(options, 'FiltFilt') && options.filtfilt
-        new_data = filtfilt(parameters.filter, new_data);
+    waitbar(1/6, hd, 'Filtering ...')
+    f = designfilt('highpassiir', 'FilterOrder', 4, ...
+                   'HalfPowerFrequency', options.HighPassFreq, 'SampleRate', fs);
+    if isfield(options, 'FiltFilt') && options.FiltFilt
+        new_data = filtfilt(f, new_data);
     else
-        new_data = filter(parameters.filter, new_data); 
+        new_data = filter(f, new_data); 
     end
 end
 
@@ -42,14 +41,13 @@ end
 
 if isfield(options, 'DownSampleRate')
     % smooth
-    progbar.Message = 'Smoothing';
-    down_fs = options.DownSampleRate;
-    downsample_factor = round(fs / down_fs);
-    parameters.smoothWidth = round(2.5 * downsample_factor);
-    new_data = shared.fastsmooth(new_data, parameters.smoothWidth,1,1);
+    waitbar(1/3, hd, 'Smoothing')
+    downsample_factor = round(fs / options.DownSampleRate);
+    smoothWidth = round(2.5 * downsample_factor);
+    new_data = shared.fastsmooth(new_data, smoothWidth,1,1);
 
     % truncate and downsample
-    progbar.Message = 'Downsampling';
+    waitbar(2/3, hd, 'Downsampling')
     new_data = downsample(new_data(t>=0,:), downsample_factor);
     new_t = downsample(t(t>=0), downsample_factor);
 else
@@ -57,4 +55,6 @@ else
     new_data = new_data(t>=0,:);
     new_t = t(t>=0);
 end
+
+close(hd)
 

@@ -33,7 +33,7 @@ function [newX, newY, newP]=dlc_fix(xdata, ydata, pdata, deltathresh, noutlfrthr
     % for m=1:length(markernames)
         % disp(markernames{m})
         datxy = {xdata,ydata};
-        if nargin ==3 
+        if nargin >=3 && ~isempty(pdata)
             datprob = pdata;
         else
             datprob = zeros(size(xdata));

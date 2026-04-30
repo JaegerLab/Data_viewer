@@ -1,6 +1,6 @@
 function fig = dlc_viewer(default_path)
     data = shared.SessionData.instance();
-    hd = struct();
+
     currentFrame = 0;
     totalFrame = 0;
     frameRate = 1;
@@ -17,7 +17,7 @@ function fig = dlc_viewer(default_path)
         grid1.ColumnWidth = {'1x', 140};
         grid1.RowHeight = {30, 30, '1x', 30};
         
-    
+        hd = struct();
         %% Row 1: Folder and open button
         hd.path = uieditfield(grid1, 'text'); 
         if nargin>=1
@@ -30,8 +30,10 @@ function fig = dlc_viewer(default_path)
             'Layout', matlab.ui.layout.GridLayoutOptions('Row', 2, 'Column', 1));
         subgrid1.ColumnWidth = {'1x', 30, 30, 100, 80, 100};
             hd.info = uilabel(subgrid1,'Text',' Info:', 'BackgroundColor','w');
-            hd.chk_x = uicheckbox(subgrid1,'Text','X','Value',1);
-            hd.chk_y = uicheckbox(subgrid1,'Text','Y','Value',1);
+            hd.chk_x = uicheckbox(subgrid1,'Text','X','Value',1, ...
+                'ValueChangedFcn', @checkXChanged);
+            hd.chk_y = uicheckbox(subgrid1,'Text','Y','Value',1, ...
+                'ValueChangedFcn', @checkYChanged);
             uibutton(subgrid1,'Text','GetFrameRate', 'ButtonPushedFcn',@getFrameRate);
             hd.frameRate = uieditfield(subgrid1,'numeric','Value',1, ...
                 'ValueDisplayFormat','%.2f Hz','ValueChangedFcn', @frameRateChanged);
@@ -40,7 +42,7 @@ function fig = dlc_viewer(default_path)
             
         % subgrid3 = uigridlayout(grid1, [1 2], 'Padding', [0 0 0 0]);
         % subgrid3.Layout.Row = 2; subgrid3.Layout.Column = 2;
-        uibutton(grid1,'Text','Auto Fix', 'ButtonPushedFcn',@openFix);
+        uibutton(grid1,'Text','DLC Fix', 'ButtonPushedFcn',@openFix);
             % hd.manualFix = uicheckbox(subgrid3,'Text','Man. Fix','Value', 0, ...
             %     'ValueChangedFcn',@manualFix);
         
@@ -54,7 +56,7 @@ function fig = dlc_viewer(default_path)
         disableDefaultInteractivity(hd.ax);
 
         hd.list_bodyparts = uilistbox(grid1, 'Multiselect', 'off', ...
-            'ValueChangedFcn', @(src,evt)showBodypart());
+            'ValueChangedFcn', @(src,evt)listChanged());
         hd.list_bodyparts.Layout.Row = 3; hd.list_bodyparts.Layout.Column = 2;
     
         %% Row 4:  zoom in, zoom out, update buttons        
@@ -67,6 +69,7 @@ function fig = dlc_viewer(default_path)
     end
 
     function openDLC(~,~)
+        hd = data.dlc.hd;
         filename = hd.path.Value;
         if isempty(filename)
             filename='*.csv';
@@ -94,16 +97,13 @@ function fig = dlc_viewer(default_path)
         hd.list_bodyparts.Items = tabledlc.Properties.UserData;
 
         % collect info
-        bodypart = hd.list_bodyparts.Value;
-        xdata = tabledlc.([bodypart '_x']);
-        ydata = tabledlc.([bodypart '_y']);
         frameRate = data.getFrameRate();
         hd.frameRate.Value = frameRate;
-        if data.has('video')
-            currentFrame = round(data.currentTime * frameRate);
-        else
+        
+        currentFrame = round(data.currentTime * frameRate);
+        if currentFrame == 0
             currentFrame = 1;
-            data.currentTime = currentFrame / frameRate;
+            
         end
         totalFrame = height(tabledlc);
         data.dlc.t = (1:totalFrame)/frameRate;
@@ -113,26 +113,31 @@ function fig = dlc_viewer(default_path)
             'total frames: %d\ntotal time: %.2f', ...
             totalFrame, data.dlc.t(end));
         hd.currentFrame.Value = currentFrame;
-    
-        % plot xy plots
-        hold(hd.ax, "off");
-        hd.xplot = plot(hd.ax, data.dlc.t, xdata, 'ButtonDownFcn', @axClicked);
-        hold(hd.ax, 'on');
-        hd.yplot = plot(hd.ax, data.dlc.t, ydata, 'ButtonDownFcn', @axClicked);
-        hd.timeline_dlc = xline(hd.ax, data.currentTime, 'k', 'HitTest', 'off');
+        
+        axis(hd.ax,'tight');
+        ylim(hd.ax, [0 1200]);
 
         % add listeners
         hd.timeListener = addlistener(data, 'TimeChanged', @(src, evt)updateDLCtime(src.currentTime));
         hd.zoomListener = addlistener(data, 'ZoomChanged', @(src, evt)updateDLCzoom(src.currentZoom));
         hd.dataListener = addlistener(data, 'DataChanged', @(src, evt)showBodypart());
         hd.infoListener = addlistener(data, 'InfoChanged', @(src, evt)updateInfo());
-        data.dlc(1).hd = hd;
+        data.dlc.hd = hd;
 
-        updateVideoMarker(currentFrame)
+        % draw time line
+        notify(data,'TimeChanged')
+        % draw trajectory plot
+        notify(data,'DataChanged');
+    end
+
+    function listChanged()
+        notify(data,'DataChanged');
     end
 
     % main update function.=========================
     function showBodypart()
+        hd = data.dlc.hd;
+        disp('dlc_showbodypart')
         bodypart = hd.list_bodyparts.Value;
 
         % update dlc plots
@@ -140,75 +145,105 @@ function fig = dlc_viewer(default_path)
         xdata = tabledlc.([bodypart '_x']);
         ydata = tabledlc.([bodypart '_y']);
 
-        hd.xplot.YData = xdata;
-        hd.yplot.YData = ydata;
+        % plot xy plots
+        hold(hd.ax, "on");
+        hd = shared.myPlot(@plot, hd, 'xplot', hd.ax, ...
+                data.dlc.t, xdata, ...
+                'b-', 'ButtonDownFcn', @axClicked);
+        hd = shared.myPlot(@plot, hd, 'yplot', hd.ax, ...
+                data.dlc.t, ydata, ...
+                'g-', 'ButtonDownFcn', @axClicked);
 
-        % if exit temp preview, superimpose it.
+        hd.xplot.Visible = hd.chk_x.Value;
+        hd.yplot.Visible = hd.chk_y.Value;
+
+        % if exist temp data, superimpose the temp plot.
         if ismember('temp_x', tabledlc.Properties.VariableNames)
             hd = shared.myPlot(@plot, hd, 'tempXplot', hd.ax, ...
                 data.dlc.t, tabledlc.temp_x, ...
-                'HitTest', 'off');
+                'r-', 'ButtonDownFcn', @axClicked);
+            hd.tempXplot.Visible = hd.chk_x.Value; 
+            uistack(hd.tempXplot, "bottom");
+            
             hd = shared.myPlot(@plot, hd, 'tempYplot', hd.ax, ...
                 data.dlc.t, tabledlc.temp_y, ...
-                'HitTest', 'off');
-            hd.tempXplot.Visible = true; hd.tempXplot.HitTest = 'off';
-            hd.tempYplot.Visible = true; hd.tempYplot.HitTest = 'off';
+                'r-', 'ButtonDownFcn', @axClicked);
+            hd.tempYplot.Visible = hd.chk_y.Value; 
+            uistack(hd.tempYplot, "bottom");
+
+            % show mask good/bad points
+            bad = ~tabledlc.temp_likelihood; %select bad points
+            hd = shared.myPlot(@plot, hd, 'tempXmask', hd.ax, ...
+                data.dlc.t(bad), xdata(bad), ...
+                'rx', 'HitTest', 'off');
+            hd.tempXmask.Visible = hd.chk_x.Value;
+            uistack(hd.tempXmask, "bottom");
+            hd = shared.myPlot(@plot, hd, 'tempYmask', hd.ax, ...
+                data.dlc.t(bad), ydata(bad), ...
+                'rx', 'HitTest', 'off');
+            hd.tempYmask.Visible = hd.chk_y.Value;
+            uistack(hd.tempYmask, "bottom");
         else
             if isfield(hd, 'tempXplot') && ishghandle(hd.tempXplot)
                 hd.tempXplot.Visible = false;
                 hd.tempYplot.Visible = false;
+                hd.tempXmask.Visible = false;
+                hd.tempYmask.Visible = false;
             end
         end
-
-        % update markers on video
-        updateVideoMarker(currentFrame)
+        data.dlc.hd = hd;
     end
 
-    % if there's video, draw the marker on the video
-    function updateVideoMarker(frame)
-        if data.has('video') 
-            % show temp marker
-            if ismember('temp_x', data.dlc.table.Properties.VariableNames)
-                hd = shared.myPlot( ...
-                    @plot, hd, 'tempMarker', data.video.hd.ax, ...
-                    hd.tempXplot.YData(frame), hd.tempYplot.YData(frame), ...
-                    'y+', 'LineWidth', 2, 'HitTest','off');
+    % checkbox callback
+    function checkXChanged(src,~)
+        hd = data.dlc.hd;
+        if isfield(hd, 'xplot') && ishghandle(hd.xplot)
+            hd.xplot.Visible = src.Value;
+        end
+        if isfield(hd, 'tempXplot') && ishghandle(hd.tempXplot)
+            has_temp = ismember('temp_x', data.dlc.table.Properties.VariableNames);
+            hd.tempXplot.Visible = src.Value && has_temp;
+            hd.tempXmask.Visible = src.Value && has_temp;
+        end
+        if data.has('gait')
+            if isfield(data.gait.hd, 'poiXDLC') && ishghandle(data.gait.hd.poiXDLC)
+                data.gait.hd.poiXDLC.Visible = src.Value && data.gait.hd.poiCheck.Value;
             end
-
-            % show marker
-            hd = shared.myPlot(@plot, hd, 'marker', data.video.hd.ax, ...
-                    hd.xplot.YData(frame), hd.yplot.YData(frame), ...
-                    'g+', 'LineWidth', 2, 'HitTest','off');
-            data.dlc.hd = hd;
-
-            % % always need to check if plot handle is still valid.
-            % if isfield(hd, 'marker') && ishghandle(hd.marker)
-            %     hd.marker.XData = hd.xplot.YData(frame);
-            %     hd.marker.YData = hd.yplot.YData(frame);            
-            % else
-            %     hd.marker = plot(data.video.hd.ax, ...
-            %         hd.xplot.YData(frame), hd.yplot.YData(frame), ...
-            %         'g+', 'LineWidth', 2, 'HitTest','off');
-            %     data.dlc.hd = hd;
-            % end
+        end
+    end
+    function checkYChanged(src,~)
+        hd = data.dlc.hd;
+        if isfield(hd, 'yplot') && ishghandle(hd.yplot)
+            hd.yplot.Visible = src.Value;
+        end
+        if isfield(hd, 'tempYplot') && ishghandle(hd.tempYplot)
+            has_temp = ismember('temp_y', data.dlc.table.Properties.VariableNames);
+            hd.tempYplot.Visible = src.Value && has_temp;
+            hd.tempYmask.Visible = src.Value && has_temp;
+        end
+        if data.has('gait')
+            if isfield(data.gait.hd, 'poiYDLC') && ishghandle(data.gait.hd.poiYDLC)
+                data.gait.hd.poiYDLC.Visible = src.Value && data.gait.hd.poiCheck.Value;
+            end
         end
     end
 
     % button callback
     function getFrameRate(~,~)
         frameRate = data.getFrameRate();
-        hd.frameRate.Value = frameRate;
+        data.dlc.hd.frameRate.Value = frameRate;
         updateFrameRate(frameRate);
     end
 
     % manually change frame rate edit field.
     function frameRateChanged(~,~)
-        data.dlc.frameRate = hd.frameRate.Value;
+        data.dlc.frameRate = data.dlc.hd.frameRate.Value;
         frameRate = data.dlc.frameRate;
         updateFrameRate(frameRate);
     end
 
     function updateFrameRate(frameRate)
+        hd = data.dlc.hd;
         data.dlc.t = (1:totalFrame) / frameRate;
         hd.info.Text = sprintf( ...
             'total frames: %d\ntotal time: %.2f', ...
@@ -216,7 +251,7 @@ function fig = dlc_viewer(default_path)
         hd.frameRate.Value = frameRate;
         hd.xplot.XData = data.dlc.t;
         hd.yplot.XData = data.dlc.t;
-        axis(hd.ax,'tight');
+        
         if hd.frameRate.Value == 1
             xlabel(hd.ax, 'Frame')
         else
@@ -224,7 +259,7 @@ function fig = dlc_viewer(default_path)
         end
     end
 
-    % triggered by data event
+    % triggered by info event
     function updateInfo()
         updateFrameRate(data.getFrameRate());
     end
@@ -232,7 +267,7 @@ function fig = dlc_viewer(default_path)
     function openFix(~,~)
         % draw new window where the mouse is
         mousePos = get(0, 'PointerLocation');
-        
+        hd = data.dlc.hd;
         if ~isfield(hd, 'fixGUI') || ~isgraphics(hd.fixGUI, 'figure')
             % open a new window
             hd.fixGUI = DLC.DLC_fix_GUI(mousePos);
@@ -240,50 +275,74 @@ function fig = dlc_viewer(default_path)
             % if window is already open, activate it.
             figure(hd.fixGUI)
         end
+        data.dlc.hd = hd;
     end
-
-    % function manualFix(src, evt)
-    %     if evt.Value
-    %         % opt.WindowStyle = 'modal';
-    %         % new_name = hd.list_bodyparts.Value;
-    %         % new_name = inputdlg('Save fixed trace as:', 'Save Trace', [1 30], {new_name}, opt);
-    %         % 
-    %         % if ~isempty(new_name)
-    %         %     if ismember(new_name, hd.list_bodyparts.Items)
-    %         %         uialert(fig, 'Overwrite?', 'Warning');
-    %         %     else
-    %         %         assignin('base', new_name{1}, data);
-    %         % 
-    %         %     end
-    %         % end
-    %     end
-    % end
 
     % === sync time and zoom ===========
     function axClicked(~,evt)
-        data.setTime(evt.IntersectionPoint(1));
+        clickType = get(fig, 'SelectionType');
+
+        if isequal(clickType, "normal")
+            % direct click, change time.
+            data.setTime(evt.IntersectionPoint(1));
+        else
+            % ctrl or shift click, modify mask manually.
+            if ismember('temp_likelihood', data.dlc.table.Properties.VariableNames)
+                % find index of the clicked point
+                [~,index] = min(abs(data.dlc.t - evt.IntersectionPoint(1)));
+                mask = data.dlc.table.temp_likelihood;
+                field = data.dlc.hd.list_bodyparts.Value;
+                xdata = data.dlc.table.([field '_x']);
+                ydata = data.dlc.table.([field '_y']);
+
+                % toggle good/bad on the mask
+                if isequal(clickType, "alt")
+                    % ctrl-click, toggle 1 data point.
+                    mask(index) = ~mask(index);
+                elseif isequal(clickType, "extend")
+                    % shift-click, toggle whole section of the same value.
+                    edges = find(diff(mask)~=0);
+                    left_edge = edges(find(edges<index, 1, "last"))+1;
+                    right_edge = edges(find(edges>index, 1, "first"));
+                    range = left_edge:right_edge;
+                    mask(range) = ~mask(range);
+                end
+
+                % change interpolation based on new mask
+                [tempX, tempY] = DLC.dlc_fix_predict(xdata,ydata,[],[],mask);
+        
+                data.dlc.table.temp_x = tempX;
+                data.dlc.table.temp_y = tempY;
+                data.dlc.table.temp_likelihood = mask;
+                notify(data, 'DataChanged');
+            end
+        end
     end
 
     function updateDLCtime(currentTime)
         if data.has('dlc')
+            hd = data.dlc.hd;
             currentFrame = round(currentTime * data.getFrameRate());
             hd.currentFrame.Value = currentFrame;
-            set(hd.timeline_dlc, 'Value', currentTime);
+            % draw time line
+            hd = shared.myPlot(@xline, hd, 'timeline_dlc', hd.ax, ...
+                data.currentTime,  'k', ...
+                'HitTest', 'off', 'HandleVisibility', 'off');
+            data.setTime(currentTime);
     
             zoomlim = shared.zoom(get(hd.ax,'xLim'), currentTime, 'pan');
             data.setZoom(zoomlim);
-
-            updateVideoMarker(currentFrame)
+            data.dlc.hd = hd;
         end
     end
 
     function zoomIn(~, ~)
-        zoomlim = shared.zoom(get(hd.ax,'xLim'), data.currentTime, 'in');
+        zoomlim = shared.zoom(get(data.dlc.hd.ax,'xLim'), data.currentTime, 'in');
         data.setZoom(zoomlim);
     end
 
     function zoomOut(~, ~)
-        zoomlim = shared.zoom(get(hd.ax,'xLim'), data.currentTime, 'out');
+        zoomlim = shared.zoom(get(data.dlc.hd.ax,'xLim'), data.currentTime, 'out');
         data.setZoom(zoomlim);
     end
 
@@ -295,17 +354,23 @@ function fig = dlc_viewer(default_path)
         if data.has('dlc')
             newZoom(1) = max([0 newZoom(1)]);
             newZoom(2) = min([newZoom(2) data.dlc.t(end)]);
-            xlim(hd.ax, newZoom);
+            xlim(data.dlc.hd.ax, newZoom);
             data.currentZoom = newZoom;
         end
     end
 
     % close function =================================
     function onClose(src,~)
+        hd=data.dlc.hd;
+        % close fix GUI first.
+        if isfield(hd, 'fixGUI')
+            close(hd.fixGUI)
+        end
         % Clear all the handles and plots;
         field = fields(hd);
         for k=1:length(field)
             try
+                disp(field{k})
                 delete(hd.(field{k}))
             catch ME
                 disp(field{k})

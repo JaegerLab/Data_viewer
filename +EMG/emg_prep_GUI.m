@@ -2,7 +2,6 @@ function fig = emg_prep_GUI(mousePos)
 % pre process window
 
     data = shared.SessionData.instance();
-    parameters = struct();
     
     %% draw GUI
     % grid 4x3
@@ -34,58 +33,13 @@ function fig = emg_prep_GUI(mousePos)
     data.emg.hd.datatype.Value = "Raw";
     notify(data, 'DataChanged');
 
-    function [new_data, new_t]=process(old_data)
-        t = data.emg.t;
-        fs = 1/median(diff(t));
-        new_data = old_data;
-
-        progbar = uiprogressdlg(fig,'Title','Processing', ...
-            'Message','Filtering', ...
-            'Indeterminate','on');
-        drawnow
-
-        if chkHighPass.Value
-            fcut = editHighPass.Value;
-            parameters.filter = designfilt('highpassiir', 'FilterOrder', 4, ...
-                           'HalfPowerFrequency', fcut, 'SampleRate', fs);
-            if chkFiltFilt.Value
-                new_data = filtfilt(parameters.filter, new_data);
-            else
-                new_data = filter(parameters.filter, new_data); 
-            end
-        end
-        
-        if chkRectify.Value
-            new_data = abs(new_data);
-        end
-        
-        if chkDownSample.Value
-            % smooth
-            progbar.Message = 'Smoothing';
-            down_fs = editDownRate.Value;
-            downsample_factor = round(fs / down_fs);
-            parameters.smoothWidth = round(2.5 * downsample_factor);
-            new_data = shared.fastsmooth(new_data, parameters.smoothWidth,1,1);
-
-            % truncate and downsample
-            progbar.Message = 'Downsampling';
-            new_data = downsample(new_data(t>=0,:), downsample_factor);
-            new_t = downsample(t(t>=0), downsample_factor);
-        else
-            % truncate (discard negative time)
-            new_data = new_data(t>=0,:);
-            new_t = t(t>=0);
-        end
-
-        % close the progress bar
-        close(progbar)
-    end
-
     function preview(~,~)
         ch = data.emg.hd.chanList.Value(1);
 
         % only process 1 channel for speed
-        [new_data, new_t]=process(data.emg.analog_data(:,ch)); 
+        parameters = getParameters();
+        [new_data, new_t] = ...
+            EMG.emg_prep(data.emg.analog_data(:,ch), data.emg.t, parameters); 
         data.emg.temp.data = new_data;
         data.emg.temp.t = new_t;
 
@@ -94,28 +48,31 @@ function fig = emg_prep_GUI(mousePos)
 
     function saveClose(~,~)
         % process all channels
-        [processed_data, processed_t] = process(data.emg.analog_data);
+        parameters = getParameters();
+        [processed_data, processed_t] = ...
+            EMG.emg_prep(data.emg.analog_data, data.emg.t, parameters);
         data.emg.processed.data = processed_data;
         data.emg.processed.t = processed_t;
+        data.emg.processed.parameters = parameters;
 
-        % save parameters
-        if chkHighPass.Value
-            data.emg.processed.highPassCutOff = editHighPass.Value;
-            data.emg.processed.filterOrder = 4;
-            data.emg.processed.filterType = 'highpassiir';
-            data.emg.processed.filter = parameters.filter;
-            data.emg.processed.filtfilt = chkFiltFilt.Value;
-        end
-        data.emg.processed.rectify = chkRectify.Value;
-        if chkDownSample.Value
-            data.emg.processed.smoothWidth = parameters.smoothWidth;
-            data.emg.processed.downSampleRate = editDownRate.Value;
-        end
-        
         data.emg.hd.datatype.Items = ["Raw","Processed"];
         data.emg.hd.datatype.Value = "Processed";
 
         close(fig);
+    end
+
+    function parameters = getParameters()
+        % save parameters
+        parameters = struct();
+
+        if chkHighPass.Value
+            parameters.HighPassFreq = editHighPass.Value;
+            parameters.FiltFilt = chkFiltFilt.Value;
+        end
+        parameters.Rectify = chkRectify.Value;
+        if chkDownSample.Value
+            parameters.DownSampleRate = editDownRate.Value;
+        end
     end
 
     function cancelClose(~,~)

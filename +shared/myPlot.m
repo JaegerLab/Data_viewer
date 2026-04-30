@@ -1,5 +1,5 @@
 function hd = myPlot(plotFun, hd, field, ax, xdata, ydata, varargin)
-% hd = myPlot(plotFun, hd, field, ax, xdata, ydata, linespec)
+% hd = myPlot(plotFun, hd, field, ax, xdata, ydata, varargin)
 %
 % check if the handle is saved in the field or not.
 % if exists, update the x and y data in the existing plot.
@@ -16,6 +16,7 @@ if nargin < 7
     varargin = {};
 end
 
+% check what kind of plot it is
 if isequal(plotFun, @xline)
     if ~isfield(hd, field) || ~ishghandle(hd.(field))
         hd.(field) = plotFun(ax, xdata, varargin{:});

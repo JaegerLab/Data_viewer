@@ -215,44 +215,38 @@ function fig = emg_viewer(default_path)
         
         % read channel mapping csv file
         ch_mapping = readtable(filename);
-
         % check if channel number is correct.
         if height(ch_mapping) == size(data.emg.analog_data, 2)
             % mono-pole recording
-            ch_mapping.Electrode = cellstr(num2str(ch_mapping.Channel, '%02d'));
         elseif height(ch_mapping) == 2*size(data.emg.analog_data, 2)
             % differential recording
-            ch_mapping.Electrode = cellstr(num2str(ch_mapping.Channel, '%02d'));
-            % combine 2 electrode names
-            ch_mapping.Electrode(1:2:end,:) = ...
-                strcat(ch_mapping.Electrode(1:2:end,:), ...
-                  '-', ch_mapping.Electrode(2:2:end,:)); 
             ch_mapping = ch_mapping(1:2:end, :);
         else
             error('Channel number mismatch');
         end
-        % channel names
-        ch_mapping.Names = join([data.emg.analog_channels',  ...
-                          ch_mapping.Electrode, ...
-                          ch_mapping.Muscle,  ...
-                          ch_mapping.Note], ', ');
+
+        % add analog channel name to the mapping table.
+        Analog = data.emg.analog_channels';
+        ch_mapping = addvars(ch_mapping, Analog, 'before', 1);
+
+        % add variable names to the sort by dropdown menu
+        hd.sortby.Items = ch_mapping.Properties.VariableNames;
+        hd.sortby.Enable = 'on';
+
+        % combine table into channel names
+        ch_mapping = convertvars(ch_mapping, @isnumeric, @(x)cellstr(num2str(x)));
+        ch_mapping.Names = join(ch_mapping{:,:}, ', ');        
         data.emg.ch_mapping = ch_mapping;
 
+        % save channel names in the list
         hd.chanList.Items = ch_mapping.Names;
-        hd.sortby.Enable = 'on';
+        
         data.emg.hd = hd;
         sortChannelMap
     end
 
     function sortChannelMap()
-        switch hd.sortby.Value
-            case "Muscle"
-                [~, orders] = sort(data.emg.ch_mapping.Muscle);
-            case "Channel"
-                [~, orders] = sort(data.emg.chan_names);
-        end
-
-        % save name in the list
+        [~, orders] = sort(data.emg.ch_mapping.(hd.sortby.Value));
         hd.chanList.Items = data.emg.ch_mapping.Names(orders);
         hd.chanList.ItemsData = orders;
     end

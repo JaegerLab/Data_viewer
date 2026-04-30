@@ -1,4 +1,4 @@
-function [x_fix, y_fix, p_fix, all_flags] = DLC_fix_new(x, y, p, params)
+function [x_fix, y_fix, p_fix, all_flags] = dlc_fix_alt(x, y, p, params)
 % 
 % 
 %

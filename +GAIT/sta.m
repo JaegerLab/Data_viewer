@@ -65,20 +65,23 @@ x = m_lags(:)./sample_rate;
 info = struct();
 % =============== random control ======================
 random_method = 3;
-k=3; % grey box of random sta: 2*std = 95% CI, 3*std = 99.7% CI
+nStd=3; % grey box of random sta: 2*std = 95% CI, 3*std = 99.7% CI
 if random_method ==1
     % mean(emg) +- std(emg)/sqrt(eventNum)
     random_mean = mean(emg);
     random_std = std(emg);
 elseif random_method == 2
     % mean +- std within moving periods
-    if exist('gait','var')
-        random_range = repelem(gait.body.speed>gait.bodythres, 1, 500);
-    else
-        random_range = 1:length(emg);
-    end
-    random_mean = mean(emg(random_range));
-    random_std = std(emg(random_range));
+    % if exist('gait','var')
+    %     random_range = repelem(gait.body.speed < 1, 1, 500); %gait.bodythres
+    % else
+    %     % random_range = 1:length(emg);
+    %     disp('error')
+    % end
+    range = [289*200:293*200 777*200:784*200 809*200:813*200];
+
+    random_mean = mean(emg(range));
+    random_std = std(emg(range));
 elseif random_method ==3
     % === randomly shift real event time =======
     rep = 100;
@@ -86,7 +89,7 @@ elseif random_method ==3
     % disp('randomized control repitition:')
     for kk=1:rep
         % add random shift
-        random_index=event_index + round(0.3*sample_rate.*(rand(size(event_index))-0.5));
+        random_index=event_index + round(1*sample_rate.*(rand(size(event_index))-0.5));
         random_index(random_index>traceLength | random_index<=0)=[];
         random_train=zeros(traceLength,1);
         random_train(random_index)=1/eventNum;
@@ -97,7 +100,7 @@ elseif random_method ==3
     random_std = std(random_sta, 0, 2);
 
 end
-info.random_sta_t = random_sta_t;
+% info.random_sta_t = random_sta_t;
 info.random_mean = random_mean;
 info.random_std = random_std;
 
@@ -117,12 +120,12 @@ if exist('plotit','var')
     if random_method == 3
         line1 = plot(random_sta_t, random_mean, 'k--');
         fill1 = fill([random_sta_t; flipud(random_sta_t)], ...
-            [random_mean; flipud(random_mean)]+k.*[random_std; -flipud(random_std)], ...
+            [random_mean; flipud(random_mean)] + nStd.*[random_std; -flipud(random_std)], ...
             'k', 'EdgeColor', 'none', 'FaceAlpha', 0.15);
     else
         line1 = yline(random_mean, 'k--');
         fill1 = fill(max_lag*[-1 1 1 -1], ...
-            random_mean+k*random_std/sqrt(eventNum)*[-1 -1 1 1], ...
+            random_mean + nStd*random_std*[-1 -1 1 1], ...
         'k', 'EdgeColor', 'none', 'FaceAlpha', 0.15);
     end
     uistack(line1,"down")
@@ -132,11 +135,11 @@ if exist('plotit','var')
     xline(0,':k','HandleVisibility', 'off');
 
 	% peak texts
-    [max_sta,index_max_sta] = max(sta-random_mean);
-	text(x(index_max_sta), max_sta+random_mean(index_max_sta), num2str(x(index_max_sta)), ...
+    [~,index_max_sta] = max(sta-random_mean);
+	text(x(index_max_sta), sta(index_max_sta), num2str(x(index_max_sta)), ...
         'VerticalAlignment','bottom','HorizontalAlignment','center')
-    [min_sta,index_min_sta] = min(sta-random_mean);
-    text(x(index_min_sta), min_sta+random_mean(index_min_sta), num2str(x(index_min_sta)), ...
+    [~,index_min_sta] = min(sta-random_mean);
+    text(x(index_min_sta), sta(index_min_sta), num2str(x(index_min_sta)), ...
         'VerticalAlignment','top','HorizontalAlignment','center')
 
     % figure title and axis labels

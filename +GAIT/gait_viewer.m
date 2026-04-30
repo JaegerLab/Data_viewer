@@ -15,10 +15,21 @@ function fig = gait_viewer(default_path)
             ColumnWidth = {'1x', 140}, RowHeight = {30, 30, '1x', 30});
 
         %% Row 1: Folder and open button
-        hd.path = uieditfield(grid1, 'text'); 
-        if nargin>=1
-            hd.path.Value = default_path;
-        end
+        
+        subgrid0 = uigridlayout(grid1, [1 5], 'Padding', [0 0 0 0]);
+        subgrid0.Layout.Row = 1; subgrid0.Layout.Column = 1;
+        subgrid0.ColumnWidth = {120,120,100,100, '1x'};
+            hd.maskFrom = uieditfield(subgrid0,'numeric','Value',0, ...
+                'ValueDisplayFormat','From: %.2f s');
+            hd.maskTo = uieditfield(subgrid0,'numeric','Value',0, ...
+                'ValueDisplayFormat','To: %.2f s');
+            uibutton(subgrid0,'Text','Good','ButtonPushedFcn',@(~,~)editMask(true));
+            uibutton(subgrid0,'Text','Bad','ButtonPushedFcn',@(~,~)editMask(false));
+            hd.path = uieditfield(subgrid0, 'text'); 
+            if nargin>=1
+                hd.path.Value = default_path;
+            end
+
         uibutton(grid1, 'Text', 'Import DLC', 'ButtonPushedFcn', @importPaws);
         
         %% Row 2: DLC processing
@@ -27,7 +38,7 @@ function fig = gait_viewer(default_path)
         subgrid1.ColumnWidth = {'1x', 130,120,120,120,100};
         hd.frameRate = uieditfield(subgrid1,'numeric','Value',1, ...
             'ValueDisplayFormat','Frame rate: %.2f Hz');
-        hd.lengthFactor = uieditfield(subgrid1,'numeric','Value',30, ...
+        hd.resolution = uieditfield(subgrid1,'numeric','Value',30, ...
             'ValueDisplayFormat','Resolution: %d px/cm');
         
         hd.bodythresh = uieditfield(subgrid1,'numeric','Value',5, ...
@@ -58,7 +69,7 @@ function fig = gait_viewer(default_path)
         hd.pawList = uilistbox(subgrid3, 'Multiselect', 'off', ...
             'ValueChangedFcn', @pawChanged, 'Enable','off');
         subgrid4 = uigridlayout(subgrid3, [1 2], Padding = [0 0 0 0]);
-            hd.poiCheck = uicheckbox(subgrid4, Text='Plot POI', Value=0, ...
+            hd.poiCheck = uicheckbox(subgrid4, Text='Events', Value=1, ...
                 Enable='off', ValueChangedFcn=@poiCheckChanged);
             hd.sta = uibutton(subgrid4, Text='STA', Enable='off', ...
                 ButtonPushedFcn=@plotSTA);
@@ -109,7 +120,7 @@ function fig = gait_viewer(default_path)
         % add listeners
         hd.timeListener = addlistener(data, 'TimeChanged', @(src, evt)updateGaitTime(src.currentTime));
         hd.zoomListener = addlistener(data, 'ZoomChanged', @(src, evt)updateGaitZoom(src.currentZoom));
-        hd.dataListener = addlistener(data, 'DataChanged', @(~,~)updateInfo());
+        hd.dataListener = addlistener(data, 'DataChanged', @(~,~)gaitAnalysis());
         hd.infoListener = addlistener(data, 'InfoChanged', @(~,~)updateInfo());
 
         data.gait.hd = hd;
@@ -117,7 +128,7 @@ function fig = gait_viewer(default_path)
 
     function getSpeeds()
         hd.frameRate.Value = data.getFrameRate;
-        data.gait.speedFactor = hd.frameRate.Value / hd.lengthFactor.Value;
+        data.gait.speedFactor = hd.frameRate.Value / hd.resolution.Value;
 
         % get body xy
         data.gait.body.name = hd.body.Value;
@@ -129,6 +140,8 @@ function fig = gait_viewer(default_path)
         body_speed = body_speed(:).*data.gait.speedFactor; 
         data.gait.body.speed = body_speed;
 
+        data.gait.mask = body_speed >= hd.bodythresh.Value;
+
         for ii = 1:numel(hd.pawList.Items)                
             data.gait.paw(ii).name = hd.pawList.Items{ii};
             x = data.dlc.table.([data.gait.paw(ii).name '_x']);
@@ -139,8 +152,8 @@ function fig = gait_viewer(default_path)
         
             paw_speed = GAIT.smooth_speed(x, y, 3).*data.gait.speedFactor;
             
-            % remove paw speed below body thresh
-            paw_speed(body_speed < hd.bodythresh.Value) = NaN;
+            % % remove paw speed below body thresh
+            % paw_speed(~data.gait.mask) = NaN;
 
             data.gait.paw(ii).speed = paw_speed;
         end
@@ -157,9 +170,18 @@ function fig = gait_viewer(default_path)
 
         % paw speed
         pawIdx = hd.pawList.Value;
+        t = data.gait.t;
+        speed = data.gait.paw(pawIdx).speed;
         hd = shared.myPlot(@plot, hd, 'pawPlot', hd.ax, ...
-                        data.gait.t, data.gait.paw(pawIdx).speed, ...
+                        t, speed, ...
+                        'Color', '#9999FF', 'ButtonDownFcn', @axClicked);
+        % paw speed masked
+        t(~data.gait.mask) = NaN;
+        speed(~data.gait.mask) = NaN;
+        hd = shared.myPlot(@plot, hd, 'pawMask', hd.ax, ...
+                        t, speed, ...
                         'b-', 'ButtonDownFcn', @axClicked);
+        
 
         % threshold lines
         hd = shared.myPlot(@yline, hd, 'bodyThresLine', hd.ax, ...
@@ -178,28 +200,50 @@ function fig = gait_viewer(default_path)
     end
 
     function getPOIs()
-        body_speed = data.gait.body.speed;
-        bodythres = hd.bodythresh.Value;
         pawthres = hd.pawthresh.Value;
 
-        MinTimeInterval = 0.2*data.getFrameRate();
+        MinTimeInterval = round(0.2*data.getFrameRate());
+        MaxRestingSpeed = 2.5;
         MaxSpeedLimit = 50;
 
         for ii = 1:numel(data.gait.paw)
             speed = data.gait.paw(ii).speed;
+            speed(~data.gait.mask) = NaN;
             
             % find the first index of each no move period.
             % insert noMove to break up the non-continuous pawups and pawdowns.
-            noMoveIdx = find(diff(body_speed < bodythres)==1) + 1 ;
+            noMoveIdx = find(diff(~data.gait.mask)==1) + 1 ;
             data.gait.paw(ii).noMove = noMoveIdx;
 
             % paw up
             pawUpIdx = find(speed(1:end-1)<=pawthres & speed(2:end)>pawthres);
-            data.gait.paw(ii).pawUp = pawUpIdx;
+            % find the point almost zero BEFORE the threshold-crossing point
+            for k=1:length(pawUpIdx)
+                range = pawUpIdx(k)+(-MinTimeInterval:0);
+                range(range<=0)=[];
+                offset = find(speed(range) <= MaxRestingSpeed, 1,"last");
+                if offset
+                    pawUpIdx(k) = pawUpIdx(k) - MinTimeInterval + offset;
+                else 
+                    pawUpIdx(k) = NaN;
+                end
+            end
+            data.gait.paw(ii).pawUp = unique(pawUpIdx(~isnan(pawUpIdx)));
 
             % paw down
             pawDownIdx = find(speed(1:end-1)>pawthres & speed(2:end)<=pawthres)+1;
-            data.gait.paw(ii).pawDown = pawDownIdx;
+            % find the point almost zero AFTER the threshold-crossing point
+            for k=1:length(pawDownIdx)
+                range = pawDownIdx(k)+(0:MinTimeInterval);
+                range(range>length(speed))=[];
+                offset = find(speed(range) <= MaxRestingSpeed, 1,"first");
+                if offset
+                    pawDownIdx(k) = pawDownIdx(k) + offset;
+                else 
+                    pawDownIdx(k) = NaN;
+                end
+            end
+            data.gait.paw(ii).pawDown = unique(pawDownIdx(~isnan(pawDownIdx)));
         
             % peak and maxspeed
             [maxSpeed,peakIdx] = findpeaks(speed, "MinPeakProminence", pawthres, "MinPeakDistance", MinTimeInterval); 
@@ -211,46 +255,10 @@ function fig = gait_viewer(default_path)
             valleyIdx(speed(valleyIdx)>MaxSpeedLimit)=[];
             data.gait.paw(ii).valley = valleyIdx;
 
-            % % interval
-            % pawlineup = diff(sortrows([t(pawUpIdx), ones(size(pawUpIdx)); ...
-            %             t(noMoveIdx), NaN(size(noMoveIdx))], 1));
-            % data.gait.paw(ii).interval = pawlineup(pawlineup(:,2)==0,1);
-            % 
-            % % stride length
-            % stride=sqrt(diff(shared.nan_index(x,valleyIdx)).^2+diff(shared.nan_index(y,valleyIdx)).^2);
-            % stride(stride>MaxStepLength)=[];
-            % gait.paw(ii).stride = stride.*gait.length_convert_factor;
-            % 
-            % % swing and stance
-            % pawlineup = [pawUpIdx(:), ones(length(pawUpIdx),1); ...
-            %             pawDownIdx(:), ones(length(pawDownIdx),1).*2; ...
-            %             noMoveIdx(:), NaN(length(noMoveIdx),1)];
-            % pawlineup = sortrows(pawlineup, 1);
-            % pawinterval = diff(pawlineup);
-            % swing_idx = pawinterval(:,2)==1 & ~isnan(pawinterval(:,1));
-            % stance_idx = pawinterval(:,2)==-1 & ~isnan(pawinterval(:,1));
-            % 
-            % % swing & stance: duration, from, to
-            % swing = table(pawinterval(swing_idx,1), ...
-            %               pawlineup(swing_idx,1), ...
-            %               pawlineup([false; swing_idx],1), ...
-            %               'VariableNames',{'duration','from','to'});
-            % swing(swing.duration==0,:)=[];
-            % stance = table(pawinterval(stance_idx,1), ...
-            %               pawlineup(stance_idx,1), ...
-            %               pawlineup([false; stance_idx],1), ...
-            %               'VariableNames',{'duration','from','to'});
-            % stance(stance.duration==0,:)=[];
-            % swing_percent = mean(swing.duration) / (mean(swing.duration) + mean(stance.duration));
-            % 
-            % data.gait.paw(ii).swing = swing;
-            % data.gait.paw(ii).stance = stance;
-            % data.gait.paw(ii).swingPercent = swing_percent;
         
         end
         % add them to List
         hd.poiCheck.Enable = 'on';
-        hd.poiCheck.Value = 1;
         hd.sta.Enable = 'on';
         hd.poiList.Enable = 'on';
         hd.poiList.Items = {'pawUp','pawDown','peak','valley'};
@@ -279,8 +287,10 @@ function fig = gait_viewer(default_path)
             if data.has('dlc')
                 hd = shared.myPlot(@scatter, hd, 'poiXDLC', data.dlc.hd.ax, ...
                                 poiT, poiX, linespec{:});
+                hd.poiXDLC.Visible = data.dlc.hd.chk_x.Value;
                 hd = shared.myPlot(@scatter, hd, 'poiYDLC', data.dlc.hd.ax, ...
                                 poiT, poiY, linespec{:});
+                hd.poiYDLC.Visible = data.dlc.hd.chk_y.Value;
             end
     
             if data.has('video') 
@@ -294,6 +304,13 @@ function fig = gait_viewer(default_path)
         end
     end
 
+    function editMask(TF)
+        [~,fromIdx] = min(abs(data.gait.t - hd.maskFrom.Value));
+        [~,toIdx] = min(abs(data.gait.t - hd.maskTo.Value));
+        data.gait.mask(fromIdx:toIdx)=TF;
+        plotSpeeds();
+    end
+
     function updateInfo()
         getSpeeds()
         plotSpeeds()
@@ -302,6 +319,8 @@ function fig = gait_viewer(default_path)
     end
 
     function gaitAnalysis(~,~)
+        % getSpeeds();
+        % plotSpeeds();
         getPOIs();
         plotPOIs();
     end
@@ -327,7 +346,7 @@ function fig = gait_viewer(default_path)
         poiIdx = data.gait.paw(pawIdx).(poiName);
         poiT = data.gait.t(poiIdx);
         
-        [ydata, xdata, info] = GAIT.sta(emg, emgT, poiT, 'plot');
+        [ydata, xdata, info] = GAIT.sta(emg, emgT, poiT, 'plot', data.gait);
 
         sta = info;
         sta.ydata = ydata;
@@ -347,6 +366,7 @@ function fig = gait_viewer(default_path)
     end
 
     function pawChanged(~,~)
+        getSpeeds();
         plotSpeeds();
         plotPOIs();
     end
@@ -360,13 +380,14 @@ function fig = gait_viewer(default_path)
         hd = shared.myPlot(@yline, hd, 'bodyThresLine', hd.ax, ...
                         [], hd.bodythresh.Value, ...
                         'k:', 'HitTest', 'off');
+        updateInfo();
     end
 
     function pawThreshChanged(~,~)
         hd = shared.myPlot(@yline, hd, 'pawThresLine', hd.ax, ...
                         [], hd.pawthresh.Value, ...
                         'b:', 'HitTest', 'off');
-
+        gaitAnalysis();
     end
 
     function poiChanged(~,~)
@@ -380,7 +401,9 @@ function fig = gait_viewer(default_path)
                 hd.(handles{k}).Visible = src.Value;
             end
         end
-        plotPOIs();
+        if src.Value
+            plotPOIs();
+        end
     end
 
     % === sync time and zoom ===========

@@ -1,32 +1,30 @@
-function gait = gait_analysis(filename, frame_rate, body_thres, paw_thres)
+function gait = gait_analysis(inputdata, frame_rate, resolution, body_thres, paw_thres)
 
 
 % filename='E:\Openfield\Basler_acA1920-155umMED__40118562__20230901_130800493_modDLC_resnet50_OpenfieldNov21shuffle1_800000.csv';
-if ischar(filename)
-    data=DLC.read_dlc(filename);
-    gait.filename = filename;
-elseif istable(filename)
-    data=filename;
-    gait.filename = filename.Properties.Description;
+if ischar(inputdata)
+    % is a filename
+    data=DLC.read_dlc(inputdata);
+    gait.filename = inputdata;
+elseif istable(inputdata)
+    % is a table readout
+    data=inputdata;
+    gait.filename = inputdata.Properties.Description;
 else 
     error('input error');
 end
 
 % get frame rate from bpod
 
-gait.frame_rate = frame_rate;
+gait.frame_rate = frame_rate; % frame/s
+gait.resolution = resolution; % pixel/cm
 
-
-% convert length from pixel to cm: length_in_pixel * length_convert_factor = cm
-% video: 1200 * 1200 pixels, open field box: 40 * 40 cm^2
-gait.length_convert_factor = 40/1200; % 40cm/1200px 
 
 % convert speed from pixel/frame to cm/s: speed * speed_convert_factor
-% 1200 pixel/1 frame = 40 cm/(1/fs) s = 40*fs cm/s
-% 1 pixel/frame = (fs*40/1200) cm/s = (fs*length_convert_factor) cm/s
-gait.speed_convert_factor = gait.frame_rate/30; 
+% speed*frame_rate/resolution = (pixel/frame)*(frame/s)*(cm/pixel) = cm/s
+gait.speed_convert_factor = frame_rate/resolution; 
 
-% internally use pixel/frame, output is cm/s
+% use pixel/frame internally, use cm/s for output
 gait.bodythres = body_thres;  % threshold should be irrelevant of frame rate
 gait.pawthres = paw_thres;
 % convert cm/s to pixel/frame, threshold's lower when frame rate's higher
@@ -37,7 +35,7 @@ MinTimeInterval = 5;
 MaxTimeInterval = 30;
 MaxStepLength = 250;
 MaxSpeedLimit = 5;
-
+MinSpeedThresh = 0.1;
 
 gait.frameNum = height(data);
 gait.t = (0:gait.frameNum-1)'./gait.frame_rate; % convert frame to second
@@ -93,11 +91,26 @@ for ii = 1:4
     speed(speed > 80) = NaN;
     gait.paw(ii).speed = speed * gait.speed_convert_factor;
 
-    % paw up and paw down
+    % paw up 
+    % 2 steps, find the point crossing threshold, then find the 0 before
     pawup = find(speed(1:end-1)<=pawthres & speed(2:end)>pawthres);
-    pawdown = find(speed(1:end-1)>pawthres & speed(2:end)<=pawthres)+1;
+    for k=1:length(pawup)
+        range = pawup(k)+(-MaxTimeInterval:0);
+        idx = find(speed(range) <= MinSpeedThresh, 1,"last");
+        if idx
+            pawup(k) = pawup(k) - MaxTimeInterval + idx;
+        else 
+            pawup(k) = NaN;
+        end
+    end
     pawup(body_speed(pawup)<bodythres)=NaN;
+
+    % paw down
+    pawdown = find(speed(1:end-1)>pawthres & speed(2:end)<=pawthres)+1;  
+    for k=1:length(pawdown)
+    end
     pawdown(body_speed(pawdown)<bodythres)=NaN;
+
 
     % line up pawup, pawdown, noMove, sort them. then diff.
     % the reason need to insert noMove in there is to break up the
@@ -152,7 +165,7 @@ for ii = 1:4
     % stride length
     stride=sqrt(diff(shared.nan_index(x,valley)).^2+diff(shared.nan_index(y,valley)).^2);
     stride(stride>MaxStepLength)=[];
-    gait.paw(ii).stride = stride.*gait.length_convert_factor;
+    gait.paw(ii).stride = stride./gait.resolution;
 
 end
     % swing / stance

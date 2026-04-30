@@ -15,7 +15,11 @@ function fig = video_viewer(default_path)
         % Main UI figure with grid layout
         fig = uifigure('Name', 'Video Viewer', 'Position', [100 100 600 600], ...
             'CloseRequestFcn', @onClose);
+        fig.WindowButtonDownFcn   = @(src,evt)onMouseDown(src, evt);
+        fig.WindowButtonMotionFcn = @(src,evt)onMouseMove(src, evt);
+        fig.WindowButtonUpFcn     = @(src,evt)onMouseUp(src, evt);
         drawnow
+
         gl = uigridlayout(fig, [4, 2]);
         gl.RowHeight = {30, 30, 40, '1x'};
         gl.ColumnWidth = {'1x', 100};
@@ -118,6 +122,7 @@ function fig = video_viewer(default_path)
         % add listeners
         hd.timeListener = addlistener(data, 'TimeChanged', @(src, evt)updateVideoTime(src.currentTime));
         hd.infoListener = addlistener(data, 'InfoChanged', @(~,~)updateInfo());
+        hd.dataListener = addlistener(data, 'DataChanged', @(~,~)drawDLCMarker());
 
         data.video.hd = hd;
 
@@ -156,14 +161,14 @@ function fig = video_viewer(default_path)
         notify(data, 'InfoChanged');
     end
 
-    % move frame based the current frame.
+    % move forward or backward frame-by-frame 
     function moveVideoFrame(direction)
         if isempty(fig.CurrentModifier)
             % move frame forward or backward
             newFrameIdx = frameIdx + direction * playStep;
             updateVideoFrame(newFrameIdx);
         elseif ismember('control', fig.CurrentModifier)
-            % control + click: adjust play speed
+            % control + click: adjust step size or play speed
             newStep = bitshift(playStep, direction); % *2 or /2
             if newStep >= 1 && newStep <= 16
                 playStep = newStep; 
@@ -195,6 +200,8 @@ function fig = video_viewer(default_path)
         hd.frame.Value = frameIdx;
         hd.time.Value = frameIdx / frameRate;
         hd.slider.Value = frameIdx;
+
+        drawDLCMarker
         data.setTime(hd.time.Value);
     end
 
@@ -223,17 +230,136 @@ function fig = video_viewer(default_path)
     end
 
     function manualFixCoord(~,evt)
-        % Can only fix temp xy lines
-        if ismember('temp_x', data.dlc.table.Properties.VariableNames)
-            % get mouse click coordinates
-            coords = evt.IntersectionPoint(1:2);
-    
-            % update temp data
-            data.dlc.table{frameIdx, 'temp_x'} =coords(1);
-            data.dlc.table{frameIdx, 'temp_y'} =coords(2);
+        if data.has('dlc')
+            % Can only fix temp xy lines
+            if ismember('temp_x', data.dlc.table.Properties.VariableNames)
+                % get mouse click coordinates
+                coords = evt.IntersectionPoint(1:2);
         
-            % trigger data changed event
-            notify(data,'DataChanged')
+                % update temp data
+                data.dlc.table{frameIdx, 'temp_x'} =coords(1);
+                data.dlc.table{frameIdx, 'temp_y'} =coords(2);
+            
+                % trigger data changed event
+                notify(data,'DataChanged')
+            end
+        end
+    end
+
+    % if there's DLC, draw the marker on the video
+    function drawDLCMarker()
+        disp('video.drawDLCmarker')
+        if data.has('dlc') 
+            hd1 = data.dlc.hd;
+
+            % show temp marker
+            if isfield(hd1, 'tempXplot')
+                hd1 = shared.myPlot( ...
+                    @plot, hd1, 'videoTempMarker', hd.ax, ...
+                    hd1.tempXplot.YData(frameIdx), hd1.tempYplot.YData(frameIdx), ...
+                    'r+', 'LineWidth', 2, 'HitTest','off');
+            end
+
+            % show marker
+            hd1 = shared.myPlot(@plot, hd1, 'videoMarker', hd.ax, ...
+                    hd1.xplot.YData(frameIdx), hd1.yplot.YData(frameIdx), ...
+                    'g+', 'LineWidth', 2, 'HitTest','off');
+            
+            data.dlc.hd = hd1;
+        end
+        drawGaitMarker()
+    end
+
+    % if there's gait, draw gait landmarks on the video
+    function drawGaitMarker()
+        if data.has('gait')
+
+        end
+    end
+
+    function onMouseDown(src, evt)
+        % begin dragging
+        cp = hd.ax.CurrentPoint;   % [x y] in axes data units
+        cx = cp(1,1); cy = cp(1,2);
+        xlims = hd.ax.XLim;
+        ylims = hd.ax.YLim;
+        tolx = 0.01 * diff(xlims);
+        toly = 0.01 * diff(ylims);
+
+        if data.has('dlc') 
+            hd1 = data.dlc.hd;
+            
+            if (isfield(hd1, 'videoMarker') && ...
+                hd1.videoMarker.Visible && ...
+                abs(cx - hd1.videoMarker.XData) < tolx && ... 
+                abs(cy - hd1.videoMarker.YData) < toly)
+                    hd.dragging = hd1.videoMarker;
+                    hd.offsetX = cx - hd1.videoMarker.XData;
+                    hd.offsetY = cy - hd1.videoMarker.YData;
+            end
+            if (isfield(hd1, 'videoTempMarker') && ...
+                hd1.videoTempMarker.Visible && ...
+                abs(cx - hd1.videoTempMarker.XData) < tolx && ... 
+                abs(cy - hd1.videoTempMarker.YData) < toly)
+                    hd.dragging = hd1.videoTempMarker;
+                    data.video.offsetX = cx - hd1.videoTempMarker.XData;
+                    data.video.offsetY = cy - hd1.videoTempMarker.YData;
+            end
+        end
+    end
+
+    function onMouseUp(src, evt)
+        % update data and finish dragging
+        if isfield(hd, 'dragging') && ~isempty(hd.dragging)
+            hd1 = data.dlc.hd;
+
+            if isequal(hd.dragging, hd1.videoMarker)
+                bodypart = hd1.list_bodyparts.Value;
+                data.dlc.table.([bodypart '_x'])(frameIdx) = hd.dragging.XData;
+                data.dlc.table.([bodypart '_y'])(frameIdx) = hd.dragging.YData;
+            elseif isequal(hd.dragging, hd1.videoTempMarker)
+                data.dlc.table.temp_x(frameIdx) = hd.dragging.XData;
+                data.dlc.table.temp_y(frameIdx) = hd.dragging.YData;
+            end
+            notify(data,'DataChanged');
+            hd.dragging = [];
+        end
+    end
+
+    function onMouseMove(src, evt)
+        cp = hd.ax.CurrentPoint;
+        cx = cp(1,1);  cy = cp(1,2);
+        xlims = hd.ax.XLim;
+        ylims = hd.ax.YLim;
+        tolx = 0.01 * diff(xlims);
+        toly = 0.01 * diff(ylims);
+        
+        if ~isfield(hd, 'dragging') || isempty(hd.dragging)
+            % not dragging, only change curser
+            if data.has('dlc') 
+                hd1 = data.dlc.hd;
+                
+                if (isfield(hd1, 'videoMarker') && ...
+                    hd1.videoMarker.Visible && ...
+                    abs(cx - hd1.videoMarker.XData) < tolx && ... 
+                    abs(cy - hd1.videoMarker.YData) < toly) ...
+                    || ...
+                   (isfield(hd1, 'videoTempMarker') && ...
+                    hd1.videoTempMarker.Visible && ...
+                    abs(cx - hd1.videoTempMarker.XData) < tolx && ... 
+                    abs(cy - hd1.videoTempMarker.YData) < toly)
+                        fig.Pointer = 'hand';
+                else
+                        fig.Pointer = 'arrow';
+                end
+            end
+        else
+            % dragging
+            newX = cx - data.video.offsetX;
+            newY = cy - data.video.offsetY;
+        
+            hd.dragging.XData = newX;
+            hd.dragging.YData = newY;
         end
     end
 
