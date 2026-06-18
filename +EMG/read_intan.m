@@ -1,8 +1,12 @@
 function data=read_intan(files)
 % data = read_intan(filenames)
 %
-% wrapper function to read_Intan_RHD2000
-% Read multiple files and conbine data.
+% wrapper function to read_Intan_RHD2000 and read_Intan_RHS2000
+% Read multiple files and concatenate data.
+%
+% files: a cell array of full filenames
+% data: a structure with the following fields concatenated: 
+%       analog_data, dig_in_data, t
 
 if nargin==0
     [files, path] = uigetfile('*.*', 'Select EMG File(s)', 'MultiSelect', 'on');
@@ -20,27 +24,30 @@ p = 0; % pointer for the end of data in pre-allocated space.
 hd = waitbar(0, 'Please wait...', 'Name', 'Reading files');
 ht = findall(hd,'Type','text');
 set(ht,'Interpreter','none');
+
 for ii=1:file_num
-    tic
     fullname = files{ii};
 
     % disp(filename)
     [~, filename, ext] = fileparts(fullname);
-    waitbar(ii/file_num, hd, sprintf('Reading: %s%s (%d/%d)', filename,ext, ii, file_num));
 
     if ~exist(fullname,"file"), error('File not found'); end
     
+    % auto select the corresponding reader for rhd and rhs.
     if isequal(ext,'.rhd')
+        waitbar(ii/file_num, hd, sprintf('Reading: %s%s (%d/%d)', filename,ext, ii, file_num));
         data1= EMG.read_Intan_RHD2000(fullname,1);
     elseif isequal(ext,'.rhs')
+        waitbar(ii/file_num, hd, sprintf('Reading: %s%s (%d/%d)', filename,ext, ii, file_num));
         data1= EMG.read_Intan_RHS2000(fullname,1);
     else
-        error('Unrecognized file type.')
+        waitbar(ii/file_num, hd, sprintf('Skipping: %s%s (%d/%d)', filename,ext, ii, file_num));
+        continue
     end
     
-    if ii==1
+    if p==0
         % 1st file
-        % pre-allocate space for speed up reading
+        % pre-allocate space to speed up reading
         data=data1;
         len = length(data1.t);
         all_len = len * file_num;
@@ -50,6 +57,8 @@ for ii=1:file_num
         if isfield(data1, 'analog_data')
             data.analog_data = zeros(all_len, size(data1.analog_data, 2));
             data.analog_data(1:len, :) = data1.analog_data;
+            % only keep channel names as a cell array of chars
+            data.analog_channels = {data1.analog_channels.custom_channel_name};
         end
         if isfield(data1, 'digital_data')
             data.digital_data = zeros(all_len, size(data1.digital_data, 2));
@@ -78,18 +87,19 @@ for ii=1:file_num
         end
         p = p + len;
     end
-    if ii == file_num
-        % last file, truncate un-used trailing zeros.
-        data.t(p+1:all_len) = [];
-        if isfield(data1, 'analog_data')
-            data.analog_data(p+1:all_len, :) = [];
-        end
-        if isfield(data1, 'digital_data')
-            data.digital_data(p+1:all_len, :) = [];
-        end
-        if isfield(data1, 'dig_in_data')
-            data.dig_in_data(p+1:all_len, :) = [];
-        end
+end
+if p < all_len
+    % after reading, truncate un-used trailing zeros.
+    data.t(p+1:all_len) = [];
+    if isfield(data1, 'analog_data')
+        data.analog_data(p+1:all_len, :) = [];
+    end
+    if isfield(data1, 'digital_data')
+        data.digital_data(p+1:all_len, :) = [];
+    end
+    if isfield(data1, 'dig_in_data')
+        data.dig_in_data(p+1:all_len, :) = [];
     end
 end
+data.files = files;
 close(hd)

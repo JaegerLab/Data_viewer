@@ -74,38 +74,52 @@ function fig = emg_viewer(default_path)
     %% === Load EMG the first time === %%
     function openEMG(~, ~)
         % open file----------------
-        default_file = hd.path.Value;
-        if isempty(default_file)
-            default_file='*.rhd';
-        else
-            [pathname, file, ext] = fileparts(default_file);
-            if isempty(ext)
-                % the last part is a folder
-                default_file = fullfile(pathname, file, '*.rhd');
-            else
-                % the last part is a file
-                default_file = fullfile(pathname, ['*' ext]);
-            end
-        end
-        [files, path] = uigetfile(default_file, 'Select EMG File(s)', 'MultiSelect', 'on');
-        if isequal(files, 0), return; end
-        if ischar(files), files = {files}; end  % ensure cell
+        
+        % === old UI, select multiple files ====
+        % default_file = hd.path.Value;
+        % if isempty(default_file)
+        %     default_file='*.rhd';
+        % else
+        %     [pathname, file, ext] = fileparts(default_file);
+        %     if isempty(ext)
+        %         % the last part is a folder
+        %         default_file = fullfile(pathname, file, '*.rhd');
+        %     else
+        %         % the last part is a file
+        %         default_file = fullfile(pathname, ['*' ext]);
+        %     end
+        % end
+        % [files, path] = uigetfile(default_file, 'Select EMG File(s)', 'MultiSelect', 'on');
+        % if isequal(files, 0), return; end
+        % if ischar(files), files = {files}; end  % ensure cell
+        % 
+        % fullPaths = fullfile(path, files);
+        % emgData = EMG.read_intan(fullPaths);
 
-        fullPaths = fullfile(path, files);
-        emgData = EMG.read_intan(fullPaths);
+        % == new UI, select the folder, compatible with Open Ephys ===
+        pathname = uigetdir(hd.path.Value, 'Select the Directory for EMG data files');
+        if isequal(pathname, 0), return; end
+
+        emgData = EMG.emg_read(pathname);
 
         % Update state ---------------
-        data.emg.filename = fullPaths;
-        data.emg.display_name = [fullPaths{1} ' ~ ' files{end}];
+        data.emg.filename = emgData.files;
+        data.emg.display_name = pathname;
         data.emg.analog_data = emgData.analog_data;
-        data.emg.analog_channels = {emgData.analog_channels.custom_channel_name};
+        data.emg.analog_channels = emgData.analog_channels;
         data.emg.sample_rate = emgData.sample_rate;
         if isfield(emgData, 'dig_in_data')
+            % Intan
             data.emg.trigger.data = emgData.dig_in_data;
+        elseif isfield(emgData, 'trigger')
+            % Open Ephys
+            data.emg.trigger = emgData.trigger;
         end
         data.emg.t = emgData.t;
 
         hd.datatype.Items = "Raw";
+
+        hd.sortby.Enable = 'off';
 
         updateInfo();
         updatePlots();
@@ -116,12 +130,11 @@ function fig = emg_viewer(default_path)
     function updateInfo()
         % trigger time
         if isfield(data.emg, 'trigger')
-            data.emg.trigger.time = data.emg.t(1 + find(diff(data.emg.trigger.data)>0.5));
+            if ~isfield(data.emg.trigger, 'time')
+                data.emg.trigger.time = data.emg.t(1 + find(diff(data.emg.trigger.data)>0.5));
+            end
             data.emg.trigger.freq = 1/median(diff(data.emg.trigger.time));
             data.emg.trigger.number = length(data.emg.trigger.time);
-            if data.has('dlc')
-                data.dlc.hd.frameRate = data.emg.trigger.freq;
-            end
         end
 
         % Update UI -------------------
@@ -133,6 +146,8 @@ function fig = emg_viewer(default_path)
             'Rate: %d Hz, Length: %.2f s\nTrigger#: %d, Freq: %.2f Hz', ...
             data.emg.sample_rate, data.emg.t(end), ...
             data.emg.trigger.number, data.emg.trigger.freq);
+
+        pushFrameRate();
     end
 
     function pushFrameRate(~,~)
